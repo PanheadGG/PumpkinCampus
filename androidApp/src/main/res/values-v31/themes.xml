@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+
+    <style name="Theme.Component.Start" parent="Theme.SplashScreen">
+        <item name="android:windowSplashScreenAnimatedIcon">@drawable/ic_launcher_foreground</item>
+        <item name="android:windowSplashScreenAnimationDuration">0</item>
+        <item name="android:windowSplashScreenBackground">@color/ic_launcher_background</item>
+        <item name="android:windowSplashScreenIconBackgroundColor">@color/ic_launcher_background</item>
+        <!-- 2. 全屏核心属性：移除所有系统装饰 -->
+        <item name="android:windowNoTitle">true</item>
+        <item name="android:windowFullscreen">true</item> <!-- 兼容低版本全屏 -->
+        <item name="android:windowContentOverlay">@null</item> <!-- 移除底部阴影 -->
+        <!-- 必须 -->
+        <item name="postSplashScreenTheme">@style/Theme.PumpkinCampus</item>
+    </style>
+</resources>
