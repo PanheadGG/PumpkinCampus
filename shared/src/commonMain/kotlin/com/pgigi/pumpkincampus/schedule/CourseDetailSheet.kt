@@ -24,7 +24,6 @@ import androidx.compose.ui.graphics.vector.rememberVectorPainter
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.moriafly.salt.ui.Icon
 import com.moriafly.salt.ui.Item
 import com.moriafly.salt.ui.ItemArrowType
@@ -34,12 +33,6 @@ import com.moriafly.salt.ui.ItemTip
 import com.moriafly.salt.ui.SaltTheme
 import com.moriafly.salt.ui.Text
 import com.moriafly.salt.ui.UnstableSaltUiApi
-import com.moriafly.salt.ui.icons.ArrowBack
-import com.moriafly.salt.ui.icons.Back
-import com.moriafly.salt.ui.icons.ChevronRight
-import com.moriafly.salt.ui.icons.Check
-import com.moriafly.salt.ui.icons.SaltIcons
-import com.moriafly.salt.ui.icons.Success
 import com.pgigi.pumpkincampus.icons.MaterialIcons
 import com.pgigi.pumpkincampus.icons.material.Book
 import com.pgigi.pumpkincampus.icons.material.CalendarMonth
@@ -75,10 +68,13 @@ private fun weekDaySuffix(course: Course): String =
  *
  * @param course 当前选中的课程；null 表示尚未选择，只展示提示标题
  * @param onClose 关闭弹层回调
- * @param onEdit 非空时在详情底部显示「编辑课程」按钮
+ * @param onEdit 非空时在详情底部显示「编辑课程」按钮（[pluginSource] 为 true 时不显示）
  * @param conflictCourses 冲突课程组（多于 1 门时在标题右侧显示 Chip 选择）
  * @param selectedConflictIndex 当前选中的冲突课程下标（对应高亮 Chip）
  * @param onSelectConflict 点击某个冲突课程 Chip 时回调下标
+ * @param pluginSource 该课程是否来自**插件只读层**：为 true 时不提供「编辑课程」，
+ *   改为只读提示 +「转换为自定义课程」入口
+ * @param onConvert 点击「转换为自定义课程」时回调（[pluginSource] 为 true 时生效）
  */
 @OptIn(UnstableSaltUiApi::class)
 @Composable
@@ -89,7 +85,9 @@ internal fun CourseDetailSheetContent(
     lessonTimes: List<LessonTime> = emptyList(),
     conflictCourses: List<Course> = emptyList(),
     selectedConflictIndex: Int = 0,
-    onSelectConflict: (Int) -> Unit = {}
+    onSelectConflict: (Int) -> Unit = {},
+    pluginSource: Boolean = false,
+    onConvert: (() -> Unit)? = null
 ) {
     Column(modifier = Modifier.fillMaxWidth()) {
         // 标题行
@@ -183,13 +181,28 @@ internal fun CourseDetailSheetContent(
                 )
             }
 
-            // 编辑入口：进入与「添加课程」一致的表单（含删除）
-            onEdit?.let {
-                ItemOuterSpacer()
-                ItemOuterTextButton(
-                    onClick = it,
-                    text = "编辑课程"
+            // 插件课程：只读提示 + 转换入口（不能直接编辑）
+            if (pluginSource) {
+                ItemTip(
+                    text = "此课程来自教务系统插件（只读），不能直接修改；" +
+                        "转换为自定义课程后即可自由编辑。"
                 )
+                onConvert?.let {
+                    ItemOuterSpacer()
+                    ItemOuterTextButton(
+                        onClick = it,
+                        text = "转换为自定义课程"
+                    )
+                }
+            } else {
+                // 编辑入口：进入与「添加课程」一致的表单（含删除）
+                onEdit?.let {
+                    ItemOuterSpacer()
+                    ItemOuterTextButton(
+                        onClick = it,
+                        text = "编辑课程"
+                    )
+                }
             }
         }
 

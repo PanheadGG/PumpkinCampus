@@ -1,7 +1,5 @@
 package com.pgigi.pumpkincampus.schedule
 
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -16,7 +14,9 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -47,7 +47,6 @@ import com.pgigi.pumpkincampus.models.isFixedCourse
 import kotlinx.datetime.DateTimeUnit
 import kotlinx.datetime.LocalDate
 import kotlinx.datetime.TimeZone
-import kotlinx.datetime.minus
 import kotlinx.datetime.number
 import kotlinx.datetime.plus
 import kotlinx.datetime.toLocalDateTime
@@ -154,6 +153,9 @@ private fun courseColor(name: String): Color {
  * @param onConflictClick 点击冲突课程组的回调，null 时内置处理：直接从底部弹层打开
  *   该冲突组（标题右侧横向 Chip 组切换，选中高亮）
  * @param onEditCourse 点击内置详情里的「编辑课程」时回调（null 则详情不显示编辑入口）
+ * @param isPluginCourse 判断一门课程是否来自**插件只读层**：详情里不提供「编辑课程」，
+ *   改为只读提示 +「转换为自定义课程」
+ * @param onConvertCourse 插件课程详情里「转换为自定义课程」的回调（null 则不显示入口）
  * @param showGridLines 是否显示网格辅助线：课次横线 **与 两天之间的竖线**（课表外观设置）
  * @param settings 课表外观设置（单元格高度除外由 [cellHeight] 控制）：老师/地点显示、
  *   「@」前缀与展示层字符串替换；null 用默认行为
@@ -170,6 +172,8 @@ fun SchedulePager(
     onCourseClick: ((Course) -> Unit)? = null,
     onConflictClick: ((List<Course>) -> Unit)? = null,
     onEditCourse: ((Course) -> Unit)? = null,
+    isPluginCourse: (Course) -> Boolean = { false },
+    onConvertCourse: ((Course) -> Unit)? = null,
     showGridLines: Boolean = true,
     settings: AppSettings? = null
 ) {
@@ -233,7 +237,9 @@ fun SchedulePager(
             course = course,
             onDismissRequest = { selectedCourse = null },
             onEdit = onEditCourse,
-            lessonTimes = lessonTimes
+            lessonTimes = lessonTimes,
+            isPluginCourse = isPluginCourse,
+            onConvert = onConvertCourse
         )
     }
 
@@ -245,7 +251,9 @@ fun SchedulePager(
             conflictCourses = group,
             onDismissRequest = { conflictCourses = null },
             onEdit = onEditCourse,
-            lessonTimes = lessonTimes
+            lessonTimes = lessonTimes,
+            isPluginCourse = isPluginCourse,
+            onConvert = onConvertCourse
         )
     }
 }

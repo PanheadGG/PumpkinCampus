@@ -23,9 +23,12 @@ import com.pgigi.pumpkincampus.models.LessonTime
  * @param course 要展示的课程
  * @param onDismissRequest 用户关闭弹层时回调（用于移除弹层状态）
  * @param onEdit 非空时详情底部显示「编辑课程」按钮，回调要编辑的课程
+ *   （插件课程不显示，改为「转换为自定义课程」）
  * @param lessonTimes 作息时间表：详情里「第几节 几点-几点」的钟点由此换算
  * @param conflictCourses 冲突课程组（多于 1 门时生效）：标题右侧显示横向滑动的
  *   课程名 Chip，选中的 Chip 高亮，点击切换当前展示的课程（代替旧的选择 Dialog）
+ * @param isPluginCourse 判断课程是否来自**插件只读层**（按当前展示的课程逐门判断）
+ * @param onConvert 非空时，插件课程详情底部显示「转换为自定义课程」
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -34,7 +37,9 @@ internal fun CourseBottomSheet(
     onDismissRequest: () -> Unit,
     onEdit: ((Course) -> Unit)? = null,
     lessonTimes: List<LessonTime> = emptyList(),
-    conflictCourses: List<Course> = emptyList()
+    conflictCourses: List<Course> = emptyList(),
+    isPluginCourse: (Course) -> Boolean = { false },
+    onConvert: ((Course) -> Unit)? = null
 ) {
     // 冲突组内当前选中的课程下标（Chip 高亮与详情展示同步切换）
     var selectedIndex by remember(conflictCourses) {
@@ -45,6 +50,8 @@ internal fun CourseBottomSheet(
     } else {
         course
     }
+    // 逐门课程判断：冲突组里插件课程与自定义课程可能同时存在
+    val displayedIsPlugin = isPluginCourse(displayed)
 
     ModalBottomSheet(
         onDismissRequest = onDismissRequest,
@@ -54,7 +61,10 @@ internal fun CourseBottomSheet(
             topEnd = CourseSheetCornerRadius
         )
     ) {
-        val editAction: (() -> Unit)? = onEdit?.let { callback -> { callback(displayed) } }
+        val editAction: (() -> Unit)? =
+            onEdit?.takeIf { !displayedIsPlugin }?.let { callback -> { callback(displayed) } }
+        val convertAction: (() -> Unit)? =
+            onConvert?.takeIf { displayedIsPlugin }?.let { callback -> { callback(displayed) } }
         CourseDetailSheetContent(
             course = displayed,
             onClose = onDismissRequest,
@@ -62,7 +72,9 @@ internal fun CourseBottomSheet(
             lessonTimes = lessonTimes,
             conflictCourses = conflictCourses,
             selectedConflictIndex = selectedIndex,
-            onSelectConflict = { selectedIndex = it }
+            onSelectConflict = { selectedIndex = it },
+            pluginSource = displayedIsPlugin,
+            onConvert = convertAction
         )
     }
 }

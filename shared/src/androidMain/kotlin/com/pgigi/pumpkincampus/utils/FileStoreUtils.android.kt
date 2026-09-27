@@ -1,5 +1,6 @@
 package com.pgigi.pumpkincampus.utils
 
+import android.annotation.SuppressLint
 import android.content.Context
 
 /**
@@ -10,6 +11,7 @@ import android.content.Context
  * AppContextHolder.context = applicationContext
  * ```
  */
+@SuppressLint("StaticFieldLeak")
 object AppContextHolder {
     lateinit var context: Context
 }

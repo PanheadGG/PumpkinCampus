@@ -1,18 +1,12 @@
 package com.pgigi.pumpkincampus.settings
 
-import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
@@ -20,15 +14,12 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.SolidColor
-import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.moriafly.salt.ui.Icon
 import com.moriafly.salt.ui.ItemDivider
-import com.moriafly.salt.ui.ItemOuterTextButton
 import com.moriafly.salt.ui.ItemOuterTitle
 import com.moriafly.salt.ui.ItemSwitcher
+import com.moriafly.salt.ui.ItemTip
 import com.moriafly.salt.ui.RoundedColumn
 import com.moriafly.salt.ui.SaltTheme
 import com.moriafly.salt.ui.Text
@@ -40,7 +31,6 @@ import com.moriafly.salt.ui.screen.BasicScreen
 import com.moriafly.salt.ui.screen.TitleBarButton
 import com.pgigi.pumpkincampus.models.AppSettings
 import com.pgigi.pumpkincampus.models.Course
-import com.pgigi.pumpkincampus.models.DisplayReplace
 import com.pgigi.pumpkincampus.schedule.SchedulePager
 import com.pgigi.pumpkincampus.schedule.buildCourseListByWeek
 import com.pgigi.pumpkincampus.schedule.currentLocalDate
@@ -49,15 +39,15 @@ import com.pgigi.pumpkincampus.schedule.weekCalculatorOf
 import kotlin.math.roundToInt
 
 /**
- * 课表外观设置子页：
+ * 课表外观设置子页（设置 Tab → 外观；**全局设置，所有课表共用**）：
  * - **上半屏**：实时预览（当前周课程表，随下方参数即时刷新；点击课程不弹详情）
  * - **下半屏**：可滚动参数
  *   - 显示网格辅助线开关
  *   - 单元格高度 50–100dp（步长 10）
  *   - 是否显示授课老师 / 上课地点 / 地点「@」前缀
- *   - 展示层字符串替换规则（隐藏校区、简化名称）
  *
  * 所有参数只影响**展示**；课程详情与编辑表单始终显示完整信息。
+ * 「显示替换」是课表专属设置，已移到课表页「⋯ → 课表设置」。
  */
 @OptIn(UnstableSaltUiApi::class)
 @Composable
@@ -138,7 +128,7 @@ internal fun AppearanceSettingsPage(
                     .verticalScroll(rememberScrollState())
                     .padding(top = 4.dp, bottom = 24.dp)
             ) {
-                ItemOuterTitle(text = "显示")
+//                ItemOuterTitle(text = "显示")
                 RoundedColumn {
                     ItemSwitcher(
                         state = settings.showGridLines,
@@ -208,149 +198,13 @@ internal fun AppearanceSettingsPage(
                     )
                 }
 
-                ItemOuterTitle(text = "显示替换")
-                RoundedColumn {
-                    if (settings.replaces.isEmpty()) {
-                        Text(
-                            text = "暂无替换规则：可添加如「雨母校区」→「」隐藏校区",
-                            fontSize = SaltTheme.textStyles.sub.fontSize,
-                            color = SaltTheme.colors.subText,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(
-                                    horizontal = SaltTheme.dimens.padding,
-                                    vertical = 12.dp
-                                )
-                        )
-                    } else {
-                        settings.replaces.forEachIndexed { index, rule ->
-                            ReplaceRuleRow(
-                                rule = rule,
-                                onChange = { updated ->
-                                    update { s ->
-                                        s.copy(
-                                            replaces = s.replaces.mapIndexed { i, r ->
-                                                if (i == index) updated else r
-                                            }
-                                        )
-                                    }
-                                },
-                                onRemove = {
-                                    update { s ->
-                                        s.copy(replaces = s.replaces.filterIndexed { i, _ ->
-                                            i != index
-                                        })
-                                    }
-                                }
-                            )
-                            if (index != settings.replaces.lastIndex) {
-                                ItemDivider()
-                            }
-                        }
-                    }
-                }
-                ItemOuterTextButton(
-                    text = "添加规则",
-                    onClick = {
-                        update { it.copy(replaces = it.replaces + DisplayReplace()) }
-                    }
-                )
-                Text(
-                    text = "替换只作用于课表格子与日程卡片的显示；课程详情、编辑表单始终显示完整信息。",
-                    fontSize = SaltTheme.textStyles.sub.fontSize,
-                    color = SaltTheme.colors.subText,
-                    lineHeight = 16.sp,
-                    modifier = Modifier.padding(
-                        horizontal = SaltTheme.dimens.padding,
-                        vertical = 6.dp
-                    )
-                )
+                /*ItemTip(
+                    text = "课表外观是**全局设置**，所有课表共用。" +
+                        "「显示替换」是课表专属的，在课表页「⋯ → 课表设置」里调整。"
+                )*/
             }
         }
     }
-}
-
-/** 单条替换规则：查找 → 替换为 + 删除。 */
-@Composable
-private fun ReplaceRuleRow(
-    rule: DisplayReplace,
-    onChange: (DisplayReplace) -> Unit,
-    onRemove: () -> Unit
-) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = SaltTheme.dimens.padding, vertical = 8.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        RuleTextField(
-            value = rule.from,
-            hint = "查找",
-            modifier = Modifier.weight(1f)
-        ) {
-            onChange(rule.copy(from = it))
-        }
-        Text(
-            text = "→",
-            fontSize = SaltTheme.textStyles.sub.fontSize,
-            color = SaltTheme.colors.subText,
-            modifier = Modifier.padding(horizontal = 6.dp)
-        )
-        RuleTextField(
-            value = rule.to,
-            hint = "替换为",
-            modifier = Modifier.weight(1f)
-        ) {
-            onChange(rule.copy(to = it))
-        }
-        Spacer(modifier = Modifier.width(10.dp))
-        Text(
-            text = "删除",
-            fontSize = SaltTheme.textStyles.sub.fontSize,
-            color = SaltTheme.colors.error,
-            modifier = Modifier
-                .clickable(onClick = onRemove)
-                .padding(4.dp)
-        )
-    }
-}
-
-/** 单行输入框（查找/替换文本）。 */
-@Composable
-private fun RuleTextField(
-    value: String,
-    hint: String,
-    modifier: Modifier = Modifier,
-    onChange: (String) -> Unit
-) {
-    BasicTextField(
-        value = value,
-        onValueChange = onChange,
-        singleLine = true,
-        modifier = modifier,
-        textStyle = TextStyle(
-            fontSize = SaltTheme.textStyles.sub.fontSize,
-            color = SaltTheme.colors.text
-        ),
-        cursorBrush = SolidColor(SaltTheme.colors.highlight),
-        decorationBox = { inner ->
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .background(SaltTheme.colors.popup, RoundedCornerShape(8.dp))
-                    .padding(horizontal = 8.dp, vertical = 8.dp)
-            ) {
-                if (value.isEmpty()) {
-                    Text(
-                        text = hint,
-                        fontSize = SaltTheme.textStyles.sub.fontSize,
-                        color = SaltTheme.colors.subText
-                    )
-                }
-                inner()
-            }
-        }
-    )
 }
 
 /**

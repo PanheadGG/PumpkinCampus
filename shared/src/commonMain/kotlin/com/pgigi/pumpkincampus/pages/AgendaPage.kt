@@ -31,7 +31,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.moriafly.salt.ui.SaltTheme
 import com.moriafly.salt.ui.Text
 import com.moriafly.salt.ui.UnstableSaltUiApi
@@ -51,7 +50,6 @@ import com.pgigi.pumpkincampus.schedule.parseClockMinutes
 import com.pgigi.pumpkincampus.schedule.weekCalculatorOf
 import kotlinx.datetime.DateTimeUnit
 import kotlinx.datetime.LocalDate
-import kotlinx.datetime.minus
 import kotlinx.datetime.number
 import kotlinx.datetime.plus
 
@@ -152,27 +150,43 @@ private fun buildAgendaItems(
  * 点击卡片复用 Material 3 `ModalBottomSheet` 展示课程详情；
  * 详情底部有「编辑课程」入口：[EditCourseSheet] 修改或（二次确认后）删除。
  *
- * @param courses 当前课程列表（由 [HomeScreen] 统一持有，含用户新增的课程）
+ * @param courses 当前课表的**自定义课程**（由 [HomeScreen] 统一持有，可编辑）
+ * @param pluginCourses 当前课表的**插件课程**（只读层，来自教务系统插件同步）：
+ *   一并展示；点开详情是只读提示 +「转换为自定义课程」，不提供「编辑课程」
+ *   详情只读、需「转换为自定义课程」后才能编辑
  * @param settings 应用设置：第一周第一天（教学周计算器）与展示层字符串替换
  * @param onUpdateCourse 修改课程回调（原课程, 新课程）
  * @param onDeleteCourse 删除课程回调（已二次确认）
+ * @param onConvertPluginCourse 插件课程「转换为自定义课程」回调（HomeScreen 弹确认）
  */
 @OptIn(UnstableSaltUiApi::class)
 @Composable
 internal fun AgendaPage(
     courses: List<Course>,
+    pluginCourses: List<Course> = emptyList(),
     settings: AppSettings = AppSettings(),
     onUpdateCourse: (Course, Course) -> Unit = { _, _ -> },
-    onDeleteCourse: (Course) -> Unit = {}
+    onDeleteCourse: (Course) -> Unit = {},
+    onConvertPluginCourse: (Course) -> Unit = {}
 ) {
+    // 展示层 = 自定义课程 + 插件课程；只读判定只认「插件里有、自定义里没有」的课程
+    //（转换为自定义课程后两边一致，按可编辑的自定义课程处理）
+    val allCourses = remember(courses, pluginCourses) { courses + pluginCourses }
+    val isPluginCourse: (Course) -> Boolean = remember(courses, pluginCourses) {
+        val custom = courses.toSet()
+        val readOnly = pluginCourses.filterNot { it in custom }.toSet()
+        // 显式命名局部变量：避免 `{ ... }` 被解析成上一行的尾随 lambda
+        val predicate: (Course) -> Boolean = { course -> course in readOnly }
+        predicate
+    }
     // 教学周计算器：由「第一周的第一天」设置驱动
     val weekCalculator = remember(settings.termStart) { weekCalculatorOf(settings.termStart) }
     // courses 为 SnapshotStateList：以内容作 key（含就地编辑），变化后自动重建
-    val courseListByWeek = remember(courses, weekCalculator, settings.semesterWeekCount) {
-        buildCourseListByWeek(courses, settings.semesterWeekCount, weekCalculator)
+    val courseListByWeek = remember(allCourses, weekCalculator, settings.semesterWeekCount) {
+        buildCourseListByWeek(allCourses, settings.semesterWeekCount, weekCalculator)
     }
     val today = remember { currentLocalDate() }
-    val agendaItems = remember(courses, weekCalculator, today, settings) {
+    val agendaItems = remember(allCourses, weekCalculator, today, settings) {
         // 从今天一直排到**本学期最后一天**：从今天所在教学周起算剩余整周（7 天/周），
         // 超出学期范围的日期由 buildAgendaItems 按周次自动跳过
         val dayCount = (
@@ -236,8 +250,14 @@ internal fun AgendaPage(
         CourseBottomSheet(
             course = course,
             onDismissRequest = { selectedCourse = null },
+            // 插件课程不提供编辑入口（详情里改为「转换为自定义课程」）
             onEdit = { editingCourse = it },
-            lessonTimes = settings.activeLessonTimes()
+            lessonTimes = settings.activeLessonTimes(),
+            isPluginCourse = isPluginCourse,
+            onConvert = { converted ->
+                selectedCourse = null
+                onConvertPluginCourse(converted)
+            }
         )
     }
 

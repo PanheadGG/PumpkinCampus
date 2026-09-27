@@ -73,7 +73,20 @@ kotlin {
             // Ktor HTTP 客户端（在线分享课表；引擎由各平台提供）
             implementation(libs.ktor.client.core)
 
+            // 插件密码类配置的加密存储（Android Keystore / iOS Keychain）
+            implementation(libs.kvault)
 
+            implementation(libs.quickjs.kt)
+            implementation(libs.ksoup)
+            implementation (libs.kzip)
+            // 顶部 Toast（Compose Multiplatform：android / ios / desktop）
+            implementation (libs.dhyantoast)
+
+
+        }
+        // 宿主单元测试（插件清单 / 课程解析的契约测试）
+        getByName("androidHostTest").dependencies {
+            implementation(kotlin("test"))
         }
     }
 }

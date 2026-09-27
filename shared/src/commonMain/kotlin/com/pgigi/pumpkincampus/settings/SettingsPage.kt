@@ -1,9 +1,9 @@
 package com.pgigi.pumpkincampus.settings
 
 import androidx.compose.animation.ContentTransform
+import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -65,17 +65,20 @@ import com.pgigi.pumpkincampus.components.AppDatePicker
 import com.pgigi.pumpkincampus.models.AppSettings
 import com.pgigi.pumpkincampus.models.Course
 import com.pgigi.pumpkincampus.models.ImportedSchedule
+import com.pgigi.pumpkincampus.models.OssLicense
 import com.pgigi.pumpkincampus.models.ScheduleCache
+import com.pgigi.pumpkincampus.models.ScheduleDefaults
 import com.pgigi.pumpkincampus.models.ScheduleExport
+import com.pgigi.pumpkincampus.plugin.PluginUiState
 import com.pgigi.pumpkincampus.schedule.ImportErrorDialog
 import com.pgigi.pumpkincampus.schedule.ShareImportDialog
-import com.pgigi.pumpkincampus.schedule.dayIndexOf
-import com.pgigi.pumpkincampus.schedule.weekCalculatorOf
 import com.pgigi.pumpkincampus.utils.JsonUtil
 import com.pgigi.pumpkincampus.utils.rememberJsonFilePicker
 import kotlinx.datetime.LocalDate
-import kotlinx.datetime.number
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.builtins.ListSerializer
+import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.modules.SerializersModule
 import kotlinx.serialization.modules.polymorphic
 import kotlinx.serialization.modules.subclass
@@ -86,9 +89,13 @@ internal val SettingsWeekLabels = listOf("日", "一", "二", "三", "四", "五
 /**
  * 设置页：
  * - 导入课程（Popup 选择：从JSON文本导入 / 从文件导入，与课表页一致）
- * - 「新建课表默认设置」子页：辅助线、课表数据与外观（新建课表时快照的默认值）
+ * - **全局显示项**：颜色模式、子标题课表名、辅助线、课表外观（所有课表共用）
+ * - **全局课表设置**：上课时间表、一天课程节数、学期周数、显示替换——
+ *   只作为**新建课表**的默认值，改它不影响已建立的课表；导入/分享按信封自带的课表配置来
+ * - 教务系统插件（全局安装/卸载）
  *
- * 「第一周的第一天」不再放在这里——每次新建课表后都会弹日期选择器提示设置。
+ * 「第一周的第一天」「上课时间」「一天课程节数」「学期周数」「显示替换」在**单个课表**里
+ * 各自维护，在课表页「⋯ → 课表设置」里调整，只对当前课表生效。
  *
  * 子页统一由 salt-ui-navigation（[rememberSaltNavigator] + [NavDisplay]）推送。
  * 设置经 [onSettingsChange] 交由 HomeScreen 持久化到 settings.json。
@@ -101,17 +108,33 @@ internal data object SettingsRootKey : NavKey
 @Serializable
 internal data object AppearanceKey : NavKey
 
-/** 「上课时间」子页导航键。 */
+/** 「全局课表设置」子页导航键（新建课表的默认值）。 */
 @Serializable
-internal data object LessonTimesKey : NavKey
+internal data object GlobalScheduleSettingsKey : NavKey
 
-/** 「时间表编辑」子页导航键。 */
+/** 「默认上课时间表」子页导航键（全局课表设置 → 上课时间表）。 */
 @Serializable
-internal data class TimetableEditKey(val timetableId: String) : NavKey
+internal data object DefaultLessonTimesKey : NavKey
 
-/** 「新建课表默认设置」子页导航键。 */
+/** 单个默认时间表编辑子页导航键（携带时间表 id）。 */
 @Serializable
-internal data object DefaultSettingsKey : NavKey
+internal data class DefaultTimetableEditKey(val timetableId: String) : NavKey
+
+/** 「教务系统插件」全局管理子页导航键。 */
+@Serializable
+internal data object PluginsKey : NavKey
+
+/** 「关于」子页导航键。 */
+@Serializable
+internal data object AboutKey : NavKey
+
+/** 「开放源代码许可」列表子页导航键。 */
+@Serializable
+internal data object OssLicenseListKey : NavKey
+
+/** 单个开源项目详情子页导航键（携带该项目条目）。 */
+@Serializable
+internal data class OssLicenseDetailKey(val license: OssLicense) : NavKey
 
 /**
  * 设置页导航宿主：子页统一用 Salt UI 的 **salt-ui-navigation**（navigation3）——
@@ -124,7 +147,8 @@ internal fun SettingsPage(
     settings: AppSettings,
     courses: List<Course>,
     onSettingsChange: (AppSettings) -> Unit,
-    onImportReady: (ImportedSchedule) -> Unit
+    onImportReady: (ImportedSchedule) -> Unit,
+    pluginUi: PluginUiState? = null
 ) {
     // salt-ui-navigation：可保存的导航栈（根 = 设置主页；子页 navigate 压栈、back 弹栈）
     val navigator = rememberSaltNavigator(
@@ -133,9 +157,13 @@ internal fun SettingsPage(
                 polymorphic(baseClass = NavKey::class) {
                     subclass(serializer = SettingsRootKey.serializer())
                     subclass(serializer = AppearanceKey.serializer())
-                    subclass(serializer = LessonTimesKey.serializer())
-                    subclass(serializer = TimetableEditKey.serializer())
-                    subclass(serializer = DefaultSettingsKey.serializer())
+                    subclass(serializer = GlobalScheduleSettingsKey.serializer())
+                    subclass(serializer = DefaultLessonTimesKey.serializer())
+                    subclass(serializer = DefaultTimetableEditKey.serializer())
+                    subclass(serializer = PluginsKey.serializer())
+                    subclass(serializer = AboutKey.serializer())
+                    subclass(serializer = OssLicenseListKey.serializer())
+                    subclass(serializer = OssLicenseDetailKey.serializer())
                 }
             }
         },
@@ -161,14 +189,13 @@ internal fun SettingsPage(
                     settings = settings,
                     onSettingsChange = onSettingsChange,
                     onImportReady = onImportReady,
+                    pluginUi = pluginUi,
                     onNavigate = { navigator.navigate(it) }
                 )
             }
-            entry<DefaultSettingsKey> {
-                DefaultSettingsPage(
-                    settings = settings,
-                    onSettingsChange = onSettingsChange,
-                    onNavigate = { navigator.navigate(it) },
+            entry<PluginsKey> {
+                PluginsPage(
+                    pluginUi = pluginUi,
                     onBack = { navigator.back() }
                 )
             }
@@ -180,19 +207,61 @@ internal fun SettingsPage(
                     onBack = { navigator.back() }
                 )
             }
-            entry<LessonTimesKey> {
-                LessonTimesPage(
+            // —— 全局课表设置：新建课表的默认值（不影响已建立的课表） ——
+            entry<GlobalScheduleSettingsKey> {
+                GlobalScheduleSettingsPage(
                     settings = settings,
                     onSettingsChange = onSettingsChange,
-                    onBack = { navigator.back() },
-                    onOpenTimetable = { navigator.navigate(TimetableEditKey(it)) }
+                    onOpenLessonTimes = { navigator.navigate(DefaultLessonTimesKey) },
+                    onBack = { navigator.back() }
                 )
             }
-            entry<TimetableEditKey> { key ->
+            entry<DefaultLessonTimesKey> {
+                // 用 ScheduleDefaults 的「可编辑视图」复用同一套时间表页面，
+                // 改完再取回课表专属字段写进全局默认值
+                LessonTimesPage(
+                    settings = settings.defaults.asEditableSettings(),
+                    onSettingsChange = { updated ->
+                        onSettingsChange(
+                            settings.copy(defaults = ScheduleDefaults.from(updated))
+                        )
+                    },
+                    onBack = { navigator.back() },
+                    onOpenTimetable = { id ->
+                        navigator.navigate(DefaultTimetableEditKey(id))
+                    },
+                    scope = TimetableScope.Defaults
+                )
+            }
+            entry<DefaultTimetableEditKey> { key ->
                 TimetableEditPage(
                     timetableId = key.timetableId,
-                    settings = settings,
-                    onSettingsChange = onSettingsChange,
+                    settings = settings.defaults.asEditableSettings(),
+                    onSettingsChange = { updated ->
+                        onSettingsChange(
+                            settings.copy(defaults = ScheduleDefaults.from(updated))
+                        )
+                    },
+                    onBack = { navigator.back() },
+                    // 默认时间表最少保留一张
+                    canDelete = settings.defaults.timetables.size > 1
+                )
+            }
+            entry<AboutKey> {
+                AboutPage(
+                    onBack = { navigator.back() },
+                    onOpenLicenses = { navigator.navigate(OssLicenseListKey) }
+                )
+            }
+            entry<OssLicenseListKey> {
+                OssLicenseListPage(
+                    onBack = { navigator.back() },
+                    onOpen = { navigator.navigate(OssLicenseDetailKey(it)) }
+                )
+            }
+            entry<OssLicenseDetailKey> { key ->
+                OssLicenseDetailPage(
+                    license = key.license,
                     onBack = { navigator.back() }
                 )
             }
@@ -206,6 +275,7 @@ private fun MainSettings(
     settings: AppSettings,
     onSettingsChange: (AppSettings) -> Unit,
     onImportReady: (ImportedSchedule) -> Unit,
+    pluginUi: PluginUiState? = null,
     onNavigate: (NavKey) -> Unit
 ) {
     var showImportMenu by remember { mutableStateOf(false) }
@@ -278,10 +348,41 @@ private fun MainSettings(
                         }
                     }
                 }
+                ItemDivider()
+                // 全局显示开关：课表页子标题（周次信息）后面是否追加当前课表名称。
+                // 刻意放在全局设置里，不进课表专属设置（多课表切换时行为一致）
+                ItemSwitcher(
+                    state = settings.showScheduleNameInSubtitle,
+                    onChange = { v ->
+                        onSettingsChange(settings.copy(showScheduleNameInSubtitle = v))
+                    },
+                    text = "课表子标题显示当前课表名称"
+                )
+                ItemDivider()
+                // 辅助线：全局显示项，所有课表共用（原先在「新建课表默认设置」里）
+                ItemSwitcher(
+                    state = settings.showGridLines,
+                    onChange = { v -> onSettingsChange(settings.copy(showGridLines = v)) },
+                    text = "打开课表辅助线"
+                )
+                ItemDivider()
+                // 课表外观（单元格高度 / 老师 / 地点 / 「@」）：同样是全局显示项
+                NavRow(
+                    title = "课表外观",
+                    value = "预览与详细参数",
+                    onClick = { onNavigate(AppearanceKey) }
+                )
             }
 
-            ItemOuterTitle(text = "课程")
+            ItemOuterTitle(text = "课表")
             RoundedColumn {
+                // 全局课表设置：新建课表的默认值（上课时间表 / 节数 / 周数 / 显示替换）
+                NavRow(
+                    title = "全局课表设置",
+                    value = "新建课表默认值",
+                    onClick = { onNavigate(GlobalScheduleSettingsKey) }
+                )
+                ItemDivider()
                 // 导入课程：与课表页一致，点按弹 Popup 选择导入来源
                 Box {
                     NavRow(
@@ -327,19 +428,36 @@ private fun MainSettings(
                 }
             }
 
-            ItemOuterTitle(text = "课表")
+            // 教务系统插件：全局安装/卸载（每个课表在「课表设置」里单独选择与配置）
+            ItemOuterTitle(text = "插件")
             RoundedColumn {
                 NavRow(
-                    title = "新建课表默认设置",
-//                    value = "辅助线 · 时间 · 节数 · 周数",
-                    onClick = { onNavigate(DefaultSettingsKey) }
+                    title = "教务系统插件",
+                    value = "已安装 ${pluginUi?.installed?.size ?: 0} 个",
+                    onClick = { onNavigate(PluginsKey) }
                 )
             }
+            /*ItemTip(
+                text = "从 zip 安装教务系统课表插件，安装/卸载对全部课表生效；" +
+                    "具体某个课表用哪个插件、怎么配置，在课表页「⋯ → 课表设置 → 教务系统插件」中设置。"
+            )
+            ItemTip(
+                text = "「打开课表辅助线」与「课表外观」是**全局设置**，所有课表共用；" +
+                    "第一周的第一天、上课时间、节数、周数、显示替换是**课表专属**，" +
+                    "在课表页「⋯ → 课表设置」里调整。"
+            )*/
 
-//            ItemTip(
-//                text = "这里是**新建课表时使用的默认设置**：新建课表会快照当前配置；" +
-//                    "已有课表的独立设置在课表页「⋯ → 课表设置」中调整，只对该课表生效。"
-//            )
+            ItemOuterTitle(text = "关于")
+            RoundedColumn {
+                NavRow(
+                    title = "关于",
+//                    value = appVersionLabel(),
+                    onClick = { onNavigate(AboutKey) }
+                )
+            }
+            /*ItemTip(
+                text = "应用版本、开放源代码许可。"
+            )*/
         }
     }
 
@@ -370,126 +488,6 @@ private fun MainSettings(
         ImportErrorDialog(
             message = message,
             onDismiss = { importError = null }
-        )
-    }
-}
-
-/**
- * 「新建课表默认设置」子页（设置 Tab 导航栈推送）：
- * 打开课表辅助线、课表外观、上课时间、一天课程节数、学期周数——
- * 新建课表时快照为该课表的专属设置。
- *
- * 「第一周的第一天」不在这里：每次新建课表后由 HomeScreen 弹日期选择器提示设置。
- *
- * @param settings 设置页默认值（settings.json）
- * @param onSettingsChange 写回默认值
- * @param onNavigate push「课表外观」「上课时间」等更深层子页
- * @param onBack 弹栈
- */
-@OptIn(UnstableSaltUiApi::class)
-@Composable
-private fun DefaultSettingsPage(
-    settings: AppSettings,
-    onSettingsChange: (AppSettings) -> Unit,
-    onNavigate: (NavKey) -> Unit,
-    onBack: () -> Unit
-) {
-    var showLessonCountPicker by remember { mutableStateOf(false) }
-    var showWeekCountPicker by remember { mutableStateOf(false) }
-
-    BasicScreen(
-        // 返回按钮放最左边（标题左边）
-        actionButton = {
-            TitleBarButton(
-                onClick = onBack,
-                icon = {
-                    Icon(
-                        imageVector = SaltIcons.Back,
-                        contentDescription = "返回",
-                        tint = SaltTheme.colors.text
-                    )
-                }
-            )
-        },
-        title = "新建课表默认设置",
-        subtitle = "新建课表时快照当前配置"
-    ) { contentPadding ->
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .verticalScroll(rememberScrollState())
-                .padding(top = contentPadding.calculateTopPadding())
-                .padding(bottom = contentPadding.calculateBottomPadding() + 24.dp)
-        ) {
-            ItemOuterTitle(text = "显示")
-            RoundedColumn {
-                ItemSwitcher(
-                    state = settings.showGridLines,
-                    onChange = { onSettingsChange(settings.copy(showGridLines = it)) },
-                    text = "打开课表辅助线"
-                )
-                ItemDivider()
-                NavRow(
-                    title = "课表外观",
-                    value = "预览与详细参数",
-                    onClick = { onNavigate(AppearanceKey) }
-                )
-            }
-
-            ItemOuterTitle(text = "课表数据")
-            RoundedColumn {
-                NavRow(
-                    title = "上课时间",
-                    value = settings.activeTimetable()
-                        ?.let { "${it.name} · ${it.slots.size} 节" } ?: "默认作息",
-                    onClick = { onNavigate(LessonTimesKey) }
-                )
-                ItemDivider()
-                NavRow(
-                    title = "一天课程节数",
-                    value = "${settings.lessonCount} 节",
-                    onClick = { showLessonCountPicker = true }
-                )
-                ItemDivider()
-                NavRow(
-                    title = "学期周数",
-                    value = "${settings.semesterWeekCount} 周",
-                    onClick = { showWeekCountPicker = true }
-                )
-            }
-
-            ItemTip(
-                text = "课表按「一天课程节数」显示行数；「上课时间」时间表中多余的节次会自动忽略。" +
-                    "修改学期周数会影响教学周的总数。"
-            )
-        }
-    }
-
-    if (showLessonCountPicker) {
-        IntPickerDialog(
-            title = "一天课程节数",
-            value = settings.lessonCount,
-            range = 1..20,
-            unit = "节",
-            onPick = {
-                onSettingsChange(settings.copy(lessonCount = it))
-                showLessonCountPicker = false
-            },
-            onDismissRequest = { showLessonCountPicker = false }
-        )
-    }
-
-    if (showWeekCountPicker) {
-        IntPickerDialog(
-            title = "学期周数",
-            value = settings.semesterWeekCount,
-            range = 1..30,
-            unit = "周",
-            onPick = {
-                onSettingsChange(settings.copy(semesterWeekCount = it))
-                showWeekCountPicker = false
-            },
-            onDismissRequest = { showWeekCountPicker = false }
         )
     }
 }
@@ -712,6 +710,10 @@ private data class ImportCoursesFile(val courses: List<Course> = emptyList())
  * 3. 课程数组 `[{...}, {...}]`
  * 4. 包装对象 `{"courses": [...]}`
  *
+ * 分享/导出已清除插件信息：插件课程在导出前就并入了 `courses`。
+ * 早期信封里单独的 `pluginCourses` 字段（当时导入后是只读层）仍会被读取并**并入课程**，
+ * 避免旧链接丢课；导入结果一律是可直接编辑的普通课表。
+ *
  * 设置页导入、课表页「从JSON文本导入 / 从文件导入」共用此约定。
  */
 internal fun parseImportedSchedule(raw: String): ImportedSchedule? {
@@ -721,15 +723,13 @@ internal fun parseImportedSchedule(raw: String): ImportedSchedule? {
     // 1) 导出信封：课表名称 + 课程 + 课表时间/开课日期/周数/节数等设置
     runCatching { JsonUtil.parseJson(text, ScheduleExport.serializer()) }
         .getOrNull()?.let { export ->
-            return export.courses.takeIf { it.isNotEmpty() }
-                ?.let {
-                    ImportedSchedule(
-                        courses = it,
-                        settings = export.settings,
-                        name = export.name
-                    )
-                }
-                ?: return null
+            val courses = (export.courses + legacyPluginCourses(text)).distinct()
+            if (courses.isEmpty()) return null
+            return ImportedSchedule(
+                courses = courses,
+                settings = export.settings,
+                name = export.name
+            )
         }
 
     // 2~4) 旧形态：只有课程，无设置
@@ -743,6 +743,19 @@ internal fun parseImportedSchedule(raw: String): ImportedSchedule? {
     val parsed = candidates.firstOrNull { it != null } ?: return null
     return parsed.takeIf { it.isNotEmpty() }?.let { ImportedSchedule(courses = it) }
 }
+
+/**
+ * 兼容早期分享信封里单独的 `pluginCourses` 字段（当时导入后进只读层）。
+ *
+ * 现在导出不再写该字段，只在解析旧链接时读一次，读到就并入课程列表。
+ * 解析失败（字段不存在 / 格式不对）返回空列表。
+ */
+private fun legacyPluginCourses(raw: String): List<Course> =
+    runCatching {
+        val element = JsonUtil.parseJson(raw, JsonElement.serializer())
+        val field = (element as? JsonObject)?.get("pluginCourses") ?: return emptyList()
+        JsonUtil.parseJson(field.toString(), ListSerializer(Course.serializer()))
+    }.getOrDefault(emptyList())
 
 /* ------------------------------------------------------------------ */
 /* 设置页通用小部件                                                     */

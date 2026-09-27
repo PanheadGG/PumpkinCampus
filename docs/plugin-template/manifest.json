@@ -1,0 +1,26 @@
+{
+  // 南瓜校园课表插件清单（允许行注释/块注释；字符串里的双斜杠不受影响）
+  "id": "com.example.university.course-plugin",   // 全局唯一，字母/数字开头，允许 . _ -
+  "name": "某大学教务课表适配器",
+  "version": "1.0.0",
+  "entry": "index.js",                            // 入口 ES Module（相对包根）
+  "minHostVersionCode": 1,                        // 需要的最小宿主 versionCode
+  "schoolName": "某大学",
+  "description": "支持新教务系统（jwxt 版本）的课表导入",
+  "author": "your-name",
+  "updateTime": "2026-09-26",
+  "configs": [
+    {
+      "title": "教务系统地址",
+      "key": "base_url",
+      "description": "教务系统根地址，例如 https://jwxt.example.edu.cn",
+      "type": "string",
+      "default": "https://jwxt.example.edu.cn"
+    },
+    { "title": "学号", "key": "username", "description": "教务系统登录学号", "type": "string", "default": null },
+    { "title": "密码", "key": "password", "description": "教务系统登录密码", "type": "password", "default": null },
+    { "title": "学期", "key": "term", "description": "要同步的学期，如 2025-2026-1", "type": "string", "default": "2025-2026-1" },
+    { "title": "优先使用缓存", "key": "use_cache", "description": "拉取成功后缓存结果，教务系统打不开时展示缓存", "type": "bool", "default": true },
+    { "title": "失败重试次数", "key": "retries", "description": "网络请求失败时的额外重试次数", "type": "int", "default": 2 }
+  ]
+}

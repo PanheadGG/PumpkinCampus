@@ -27,10 +27,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
-import com.moriafly.salt.ui.Icon
 import com.moriafly.salt.ui.ItemDivider
 import com.moriafly.salt.ui.ItemEdit
 import com.moriafly.salt.ui.ItemOuterSpacer
@@ -39,12 +36,9 @@ import com.moriafly.salt.ui.RoundedColumn
 import com.moriafly.salt.ui.SaltTheme
 import com.moriafly.salt.ui.Text
 import com.moriafly.salt.ui.UnstableSaltUiApi
-import com.moriafly.salt.ui.icons.SaltIcons
 import com.moriafly.salt.ui.innerPadding
 import com.moriafly.salt.ui.outerPadding
 import com.pgigi.pumpkincampus.DemoWeekCount
-import com.pgigi.pumpkincampus.icons.MaterialIcons
-import com.pgigi.pumpkincampus.icons.material.Book
 import com.pgigi.pumpkincampus.models.Course
 import com.pgigi.pumpkincampus.models.isFixedCourse
 import kotlin.math.roundToInt

@@ -10,20 +10,27 @@ androidx-espresso = "3.7.0"
 androidx-lifecycle = "2.11.0"
 androidx-testExt = "1.3.0"
 composeMultiplatform = "1.12.1"
+dhyantoast = "0.0.1"
 junit = "4.13.2"
 kotlin = "2.4.20"
+ksoup = "0.2.6"
+kzip = "2.0.0"
 material3 = "1.12.0-alpha03"
 
+quickjsKt = "1.0.15"
 saltUi = "3.0.0-beta01"
 serialization = "1.11.0"
 datetime = "0.7.1"
 okio = "3.17.0"
 navigation3 = "1.1.1"
 ktor = "3.4.0"
+# 插件密码类配置的加密存储（Android EncryptedSharedPreferences / iOS Keychain）
+kvault = "1.12.0"
 
 splashscreen = "1.2.0"
 
 [libraries]
+dhyantoast = { module = "io.github.androidpoet:dhyantoast", version.ref = "dhyantoast" }
 kotlin-test = { module = "org.jetbrains.kotlin:kotlin-test", version.ref = "kotlin" }
 kotlin-testJunit = { module = "org.jetbrains.kotlin:kotlin-test-junit", version.ref = "kotlin" }
 junit = { module = "junit:junit", version.ref = "junit" }
@@ -42,6 +49,9 @@ compose-ui = { module = "org.jetbrains.compose.ui:ui", version.ref = "composeMul
 compose-components-resources = { module = "org.jetbrains.compose.components:components-resources", version.ref = "composeMultiplatform" }
 compose-uiToolingPreview = { module = "org.jetbrains.compose.ui:ui-tooling-preview", version.ref = "composeMultiplatform" }
 
+ksoup = { module = "com.fleeksoft.ksoup:ksoup", version.ref = "ksoup" }
+kzip = { module = "de.jonasbroeckmann.kzip:kzip", version.ref = "kzip" }
+quickjs-kt = { module = "io.github.dokar3:quickjs-kt", version.ref = "quickjsKt" }
 salt-ui = { module = "io.github.moriafly:salt-ui", version.ref = "saltUi" }
 salt-ui-navigation = { module = "io.github.moriafly:salt-ui-navigation", version.ref = "saltUi" }
 serialization-json = { group = "org.jetbrains.kotlinx", name = "kotlinx-serialization-json", version.ref = "serialization" }
@@ -56,6 +66,9 @@ navigation3-ui = { module = "org.jetbrains.androidx.navigation3:navigation3-ui",
 ktor-client-core = { module = "io.ktor:ktor-client-core", version.ref = "ktor" }
 ktor-client-android = { module = "io.ktor:ktor-client-android", version.ref = "ktor" }
 ktor-client-darwin = { module = "io.ktor:ktor-client-darwin", version.ref = "ktor" }
+
+# KVault：插件密码类配置的加密存储（Android Keystore / iOS Keychain）
+kvault = { module = "com.liftric:kvault", version.ref = "kvault" }
 
 splashscreen = { group = "androidx.core", name = "core-splashscreen", version.ref = "splashscreen" }
 

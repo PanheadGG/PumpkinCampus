@@ -19,7 +19,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.moriafly.salt.ui.ItemOuterSpacer
 import com.moriafly.salt.ui.ItemOuterTextButton
 import com.moriafly.salt.ui.SaltTheme

@@ -1,9 +1,10 @@
 package com.pgigi.pumpkincampus.pages
 
 import androidx.compose.animation.ContentTransform
+import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
-import androidx.compose.animation.core.tween
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Box
@@ -12,10 +13,15 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
+import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -24,9 +30,10 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.unit.DpOffset
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.navigation3.runtime.NavBackStack
 import androidx.navigation3.runtime.NavKey
 import androidx.navigation3.runtime.entryProvider
@@ -50,6 +57,7 @@ import com.pgigi.pumpkincampus.models.AppSettings
 import com.pgigi.pumpkincampus.models.Course
 import com.pgigi.pumpkincampus.models.CourseSchedule
 import com.pgigi.pumpkincampus.models.ImportedSchedule
+import com.pgigi.pumpkincampus.plugin.PluginUiState
 import com.pgigi.pumpkincampus.schedule.AddCourseSheet
 import com.pgigi.pumpkincampus.schedule.EditCourseSheet
 import com.pgigi.pumpkincampus.schedule.ImportErrorDialog
@@ -62,9 +70,9 @@ import com.pgigi.pumpkincampus.schedule.buildCourseListByWeek
 import com.pgigi.pumpkincampus.schedule.currentLocalDate
 import com.pgigi.pumpkincampus.schedule.dayIndexOf
 import com.pgigi.pumpkincampus.schedule.weekCalculatorOf
-import com.pgigi.pumpkincampus.settings.AppearanceSettingsPage
 import com.pgigi.pumpkincampus.settings.ImportCoursesDialog
 import com.pgigi.pumpkincampus.settings.LessonTimesPage
+import com.pgigi.pumpkincampus.settings.SchedulePluginPage
 import com.pgigi.pumpkincampus.settings.ScheduleSettingsPage
 import com.pgigi.pumpkincampus.settings.TimetableEditPage
 import com.pgigi.pumpkincampus.settings.parseImportedSchedule
@@ -85,9 +93,9 @@ internal data object TimetableRootKey : NavKey
 @Serializable
 internal data object ScheduleSettingsKey : NavKey
 
-/** 课表页「课表外观」子页导航键。 */
+/** 「课表设置 → 教务系统插件」子页导航键（当前课表的插件选择/配置/同步）。 */
 @Serializable
-internal data object TimetableAppearanceKey : NavKey
+internal data object SchedulePluginKey : NavKey
 
 /** 课表页「上课时间」子页导航键。 */
 @Serializable
@@ -118,14 +126,17 @@ internal data class TimetableLessonEditKey(val timetableId: String) : NavKey
  *   快速跳转周数滑块 + 多课表管理（Chip 切换 / 新建 / 重命名 / 删除 / 课表设置）
  *   + 快捷按钮（第一周的第一天、上课时间）
  * - 子页统一由 navigation3 [NavDisplay] 推送：[ScheduleSettingsPage]（课表设置，
- *   仅对当前课表生效）、[AppearanceSettingsPage]、[LessonTimesPage]、[TimetableEditPage]
+ *   仅对当前课表生效）、[LessonTimesPage]、[TimetableEditPage]
  * - 课程详情底部有「编辑课程」入口：[EditCourseSheet] 修改或（二次确认后）删除
  *
- * @param courses 当前课程列表（由 [HomeScreen] 统一持有 = 当前课表的自定义课程 + 插件课程）
- * @param settings **当前课表的生效设置**（该课表的专属设置，未定制时回落默认值）
+ * @param courses 当前课表的**自定义课程**（由 [HomeScreen] 统一持有；可编辑）
+ * @param pluginCourses 当前课表的**插件课程**（只读层，来自教务系统插件同步）：
+ *   与自定义课程一起展示（外观一致），详情只读、需「转换为自定义课程」
+ * @param settings **当前课表的生效设置**（课表专属设置 + 全局显示项，见
+ *   [com.pgigi.pumpkincampus.models.AppSettings.withGlobalDisplay]）
  * @param schedules 全部课表（多课表管理，课程按课表隔离、互不相通）
  * @param activeScheduleId 当前课表 id
- * @param onScheduleSettingsChange 写回**当前课表的专属设置**（课表设置/外观/上课时间等）
+ * @param onScheduleSettingsChange 写回**当前课表的专属设置**（课表设置/上课时间/显示替换等）
  * @param onSwitchSchedule 切换当前课表
  * @param onCreateSchedule 新建课表（名称，初始设置 = 设置页默认值）
  * @param onRenameSchedule 重命名课表（id, 新名称）
@@ -139,11 +150,20 @@ internal data class TimetableLessonEditKey(val timetableId: String) : NavKey
  * @param onAddCourse 新增课程回调，由外壳写入**当前课表**并落盘 custom-schedule.json
  * @param onUpdateCourse 修改课程回调（原课程, 新课程）
  * @param onDeleteCourse 删除课程回调（已二次确认）
+ * @param onConvertPluginCourse 插件课程「转换为自定义课程」回调（由 HomeScreen 弹确认，
+ *   提示插件更新课表后可能出现的重复课程）
+ * @param pluginUi 插件状态与回调（课表设置 → 教务系统插件子页使用；null = 未接入）
+ * @param showScheduleNameInSubtitle 课表页子标题是否追加当前课表名称
+ *   （**全局显示开关**：由 HomeScreen 传全局设置，不用课表专属设置的快照值）
+ * @param pluginRefreshing 是否正在同步插件课表（下拉刷新的转圈状态）
+ * @param onRefreshPluginCourses 下拉刷新：同步当前课表的插件课表
+ *   （结果由 HomeScreen 用顶部 Toast 提示；未选插件/未安装时也会给提示）
  */
 @OptIn(UnstableSaltUiApi::class)
 @Composable
 internal fun TimetablePage(
     courses: List<Course>,
+    pluginCourses: List<Course> = emptyList(),
     settings: AppSettings = AppSettings(),
     schedules: List<CourseSchedule> = emptyList(),
     activeScheduleId: String = "",
@@ -157,7 +177,12 @@ internal fun TimetablePage(
     onImportReady: (ImportedSchedule) -> Unit = {},
     onAddCourse: (Course) -> Unit = {},
     onUpdateCourse: (Course, Course) -> Unit = { _, _ -> },
-    onDeleteCourse: (Course) -> Unit = {}
+    onDeleteCourse: (Course) -> Unit = {},
+    onConvertPluginCourse: (Course) -> Unit = {},
+    pluginUi: PluginUiState? = null,
+    showScheduleNameInSubtitle: Boolean = true,
+    pluginRefreshing: Boolean = false,
+    onRefreshPluginCourses: () -> Unit = {}
 ) {
     val backStack = remember { NavBackStack<NavKey>(TimetableRootKey) }
 
@@ -169,10 +194,22 @@ internal fun TimetablePage(
         if (backStack.size > 1) backStack.removeAt(backStack.lastIndex)
     }
 
+    // 展示层 = 自定义课程 + 插件课程；但**只读判定**只认「插件里有、自定义里没有」的课程：
+    // 用户把插件课程转成自定义课程后两边内容一致，此时按自定义课程处理，
+    // 这样转换后的副本还能继续编辑（否则会被只读层挡住编辑入口）
+    val allCourses = remember(courses, pluginCourses) { courses + pluginCourses }
+    val isPluginCourse: (Course) -> Boolean = remember(courses, pluginCourses) {
+        val custom = courses.toSet()
+        val readOnly = pluginCourses.filterNot { it in custom }.toSet()
+        // 显式命名局部变量：避免 `{ ... }` 被解析成上一行的尾随 lambda
+        val predicate: (Course) -> Boolean = { course -> course in readOnly }
+        predicate
+    }
+
     // 周状态提到导航宿主层：压栈 / 弹栈（root 场景卸载重挂）期间保持浏览周不变
     val weekCalculator = remember(settings.termStart) { weekCalculatorOf(settings.termStart) }
-    val courseListByWeek = remember(courses, weekCalculator, settings.semesterWeekCount) {
-        buildCourseListByWeek(courses, settings.semesterWeekCount, weekCalculator)
+    val courseListByWeek = remember(allCourses, weekCalculator, settings.semesterWeekCount) {
+        buildCourseListByWeek(allCourses, settings.semesterWeekCount, weekCalculator)
     }
     val currentWeekPage = remember(weekCalculator, settings.semesterWeekCount) {
         weekCalculator.getWeekNumber(currentLocalDate())
@@ -197,7 +234,8 @@ internal fun TimetablePage(
         entryProvider = entryProvider {
             entry<TimetableRootKey> {
                 TimetableRootContent(
-                    courses = courses,
+                    courses = allCourses,
+                    isPluginCourse = isPluginCourse,
                     settings = settings,
                     schedules = schedules,
                     activeScheduleId = activeScheduleId,
@@ -217,7 +255,11 @@ internal fun TimetablePage(
                     onImportReady = onImportReady,
                     onAddCourse = onAddCourse,
                     onUpdateCourse = onUpdateCourse,
-                    onDeleteCourse = onDeleteCourse
+                    onDeleteCourse = onDeleteCourse,
+                    onConvertPluginCourse = onConvertPluginCourse,
+                    showScheduleNameInSubtitle = showScheduleNameInSubtitle,
+                    pluginRefreshing = pluginRefreshing,
+                    onRefreshPluginCourses = onRefreshPluginCourses
                 )
             }
             entry<ScheduleSettingsKey> {
@@ -229,16 +271,17 @@ internal fun TimetablePage(
                     onRenameSchedule = { name ->
                         onRenameSchedule(activeScheduleId, name)
                     },
-                    onOpenAppearance = { push(TimetableAppearanceKey) },
                     onOpenLessonTimes = { push(TimetableLessonTimesKey) },
+                    pluginUi = pluginUi,
+                    onOpenPlugin = { push(SchedulePluginKey) },
                     onBack = { pop() }
                 )
             }
-            entry<TimetableAppearanceKey> {
-                AppearanceSettingsPage(
-                    settings = settings,
-                    courses = courses,
-                    onSettingsChange = onScheduleSettingsChange,
+            entry<SchedulePluginKey> {
+                SchedulePluginPage(
+                    pluginUi = pluginUi,
+                    scheduleName = schedules.firstOrNull { it.id == activeScheduleId }
+                        ?.name.orEmpty(),
                     onBack = { pop() }
                 )
             }
@@ -262,14 +305,34 @@ internal fun TimetablePage(
     )
 }
 
+/**
+ * 课表页子标题：周次信息 + （可选）当前课表名称，如「第3周 周三 · 我的课表」。
+ *
+ * @param showScheduleName 全局显示开关（设置 → 外观 → 课表子标题显示当前课表名称）
+ * @param scheduleName 当前课表名称；为空时即使开关打开也不追加（避免出现孤立的「·」）
+ */
+internal fun timetableSubtitle(
+    weekInfo: String,
+    scheduleName: String,
+    showScheduleName: Boolean
+): String = if (showScheduleName && scheduleName.isNotBlank()) {
+    "$weekInfo · $scheduleName"
+} else {
+    weekInfo
+}
+
 /** 课表页根场景内容（[NavDisplay] 的 root entry；周状态由宿主提供以跨子页保持）。 */
-@OptIn(UnstableSaltUiApi::class)
+@OptIn(UnstableSaltUiApi::class, ExperimentalMaterial3Api::class)
 @Composable
 private fun TimetableRootContent(
     courses: List<Course>,
+    isPluginCourse: (Course) -> Boolean,
     settings: AppSettings,
     schedules: List<CourseSchedule>,
     activeScheduleId: String,
+    showScheduleNameInSubtitle: Boolean,
+    pluginRefreshing: Boolean,
+    onRefreshPluginCourses: () -> Unit,
     weekCalculator: WeekCalculator,
     courseListByWeek: List<List<Course>>,
     currentWeekPage: Int,
@@ -286,9 +349,12 @@ private fun TimetableRootContent(
     onImportReady: (ImportedSchedule) -> Unit,
     onAddCourse: (Course) -> Unit,
     onUpdateCourse: (Course, Course) -> Unit,
-    onDeleteCourse: (Course) -> Unit
+    onDeleteCourse: (Course) -> Unit,
+    onConvertPluginCourse: (Course) -> Unit
 ) {
     val scope = rememberCoroutineScope()
+    // 下拉刷新指示器状态（与 isRefreshing 一起决定箭头/转圈与位置）
+    val pullToRefreshState = rememberPullToRefreshState()
     val todayLabel = remember {
         "周${WeekDayLabels[dayIndexOf(currentLocalDate())]}"
     }
@@ -346,6 +412,12 @@ private fun TimetableRootContent(
         // 其他周：第几周 + 当前第几周
         "第${viewedWeek}周 当前第${currentWeekPage + 1}周"
     }
+    // 子标题 = 周次信息 [+ 当前课表名称]（全局开关控制）
+    val subtitleText = timetableSubtitle(
+        weekInfo = weekInfo,
+        scheduleName = schedules.firstOrNull { it.id == activeScheduleId }?.name.orEmpty(),
+        showScheduleName = showScheduleNameInSubtitle
+    )
 
     fun backToCurrentWeek() {
         scope.launch { pagerState.animateScrollToPage(currentWeekPage) }
@@ -354,8 +426,8 @@ private fun TimetableRootContent(
     BasicScreen(
         actionButton = null,
         title = "课表",
-        // 课表 TopBar 下面那行字：周次信息，点击标题回到当前周
-        subtitle = weekInfo,
+        // 课表 TopBar 下面那行字：周次信息（+ 当前课表名称），点击标题回到当前周
+        subtitle = subtitleText,
         // TopBar 右侧：添加课程按钮 + 其右边的「导入课表」按钮（弹 Popup）+「⋯」课表工具按钮
         toolButtons = {
             TitleBarButton(
@@ -473,26 +545,93 @@ private fun TimetableRootContent(
         // BottomBar 上方，再垫一层安全区会在课表与底部导航栏之间多出一条固定空白。
         // 去掉后课表区域一直延伸到导航栏：行高不足时下方留白（该多高就多高），
         // 行高调大到放不下时表格内部滚动，内容始终排到导航栏、不产生额外空隙
-        Column(
+        //
+        // 下拉刷新（PullToRefreshBox）：下拉同步当前课表的插件课表；
+        // 手势由课表内部的纵向滚动（SchedulePager 的 verticalScroll）分发给嵌套滚动
+        //
+        // 为什么用自定义指示器（不用 PullToRefreshDefaults.Indicator）：
+        // 1. Salt 的 BasicScreen 在「标题栏高度」处裁剪页面内容，标题栏还叠在内容之上；
+        // 2. 官方指示器的绘制被裁剪在自身 40dp 槽位内，靠「从槽位顶边滑出」来隐藏自己
+        //    （源码：绘制位置 = 布局位置 + 下拉进度 × maxDistance − 40dp）。
+        // 两条合起来的结果：槽位上方只要有东西——标题栏的裁剪线、或者课表的日期行
+        // （ScheduleHeaderHeight = 44dp，正好在内容顶部）——图标就会被切掉一半，
+        // 看起来像「被标题栏/日期行挡住」。
+        // 所以这里自己摆一个固定位置的指示器：紧贴标题栏下沿，永远完整显示，
+        // 下拉时按进度画弧、刷新时转圈，并随下拉轻微下移（8dp）给一点跟随手感。
+        // 它不消费触摸事件，不影响下拉手势与日期行。
+        val topInset = contentPadding.calculateTopPadding()
+        PullToRefreshBox(
+            isRefreshing = pluginRefreshing,
+            onRefresh = onRefreshPluginCourses,
+            // 必须把 state 传进去！否则 PullToRefreshBox 内部会自建一个 state，
+            // 下面指示器读到的 distanceFraction 永远是 0（下拉过程中毫无反馈，
+            // 只有 isRefreshing 变 true 时图标才「突然出现」）
+            state = pullToRefreshState,
             modifier = Modifier
                 .fillMaxSize()
-                .padding(top = contentPadding.calculateTopPadding())
+                .padding(top = topInset),
+            indicator = {
+                val pulledFraction = pullToRefreshState.distanceFraction
+                // 静止（未下拉、未刷新）时不显示；下拉或刷新中才出现
+                if (pluginRefreshing || pulledFraction > 0f) {
+                    // 刷新中按拉满算：设置页/自动同步触发的刷新也要能看见
+                    val progress = if (pluginRefreshing) 1f else pulledFraction.coerceIn(0f, 1f)
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.TopCenter)
+                            .padding(top = 6.dp)
+                            .offset(y = (progress * 8).dp)
+                            .size(40.dp)
+                            // 随下拉进度淡入 + 轻微放大，避免刚下拉时「突然冒出来」
+                            .graphicsLayer {
+                                alpha = (progress * 3f).coerceIn(0f, 1f)
+                                val scale = 0.9f + 0.1f * progress
+                                scaleX = scale
+                                scaleY = scale
+                            }
+                            .shadow(2.dp, CircleShape)
+                            .background(SaltTheme.colors.popup, CircleShape),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        if (pluginRefreshing) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(20.dp),
+                                color = SaltTheme.colors.highlight,
+                                strokeWidth = 2.dp
+                            )
+                        } else {
+                            // 下拉进度弧：拉过阈值即触发刷新
+                            CircularProgressIndicator(
+                                progress = { pulledFraction },
+                                modifier = Modifier.size(20.dp),
+                                color = SaltTheme.colors.highlight,
+                                strokeWidth = 2.dp,
+                                trackColor = SaltTheme.colors.stroke
+                            )
+                        }
+                    }
+                }
+            }
         ) {
-            // 课表撑满 TopBar 到底部之间的整个区域，左右不留边距
-            SchedulePager(
-                courseListByWeek = courseListByWeek,
-                lessonTimes = settings.activeLessonTimes(),
-                lessonCount = settings.lessonCount,
-                weekCalculator = weekCalculator,
-                pagerState = pagerState,
-                onEditCourse = { editingCourse = it },
-                cellHeight = settings.cellHeightDp.dp,
-                showGridLines = settings.showGridLines,
-                settings = settings,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .weight(1f)
-            )
+            Column(modifier = Modifier.fillMaxSize()) {
+                // 课表撑满 TopBar 到底部之间的整个区域，左右不留边距
+                SchedulePager(
+                    courseListByWeek = courseListByWeek,
+                    lessonTimes = settings.activeLessonTimes(),
+                    lessonCount = settings.lessonCount,
+                    weekCalculator = weekCalculator,
+                    pagerState = pagerState,
+                    onEditCourse = { editingCourse = it },
+                    isPluginCourse = isPluginCourse,
+                    onConvertCourse = onConvertPluginCourse,
+                    cellHeight = settings.cellHeightDp.dp,
+                    showGridLines = settings.showGridLines,
+                    settings = settings,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f)
+                )
+            }
         }
     }
 

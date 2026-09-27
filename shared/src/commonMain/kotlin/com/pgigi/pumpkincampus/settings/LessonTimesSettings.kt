@@ -15,8 +15,6 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.Slider
-import androidx.compose.material3.SliderDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -54,6 +52,7 @@ import com.moriafly.salt.ui.screen.BasicScreen
 import com.moriafly.salt.ui.screen.TitleBarButton
 import com.pgigi.pumpkincampus.SampleLessonTimes
 import com.pgigi.pumpkincampus.components.AddIcon
+import com.pgigi.pumpkincampus.components.WheelPickerColumn
 import com.pgigi.pumpkincampus.models.AppSettings
 import com.pgigi.pumpkincampus.models.LessonTime
 import com.pgigi.pumpkincampus.models.LessonTimetable
@@ -66,10 +65,19 @@ import kotlin.time.ExperimentalTime
 private data class PickTarget(val slotIndex: Int, val isStart: Boolean)
 
 /**
+ * 「时间表」页面的两种用法：
+ * - [Schedule]：某个课表的上课时间（候选时间表里「来自全局默认」与「本课表自建」分组展示）
+ * - [Defaults]：「设置 → 全局课表设置 → 上课时间表」，编辑的是**新建课表的默认值**
+ */
+internal enum class TimetableScope { Schedule, Defaults }
+
+/**
  * 「上课时间」子页（NavDisplay 推送）：
- * - 内置默认作息（当前课表时间）与自建候选时间表列表
+ * - 内置默认作息 + 候选时间表列表
  * - 点时间表 → [TimetableEditPage] 编辑；点「启用」切换当前作息
  * - 右上「+」新建时间表（复制当前作息为底稿）
+ *
+ * @param scope 见 [TimetableScope]：课表专属页会把「默认时间表」与「本课表自建」分开列
  */
 @OptIn(UnstableSaltUiApi::class, ExperimentalTime::class)
 @Composable
@@ -77,9 +85,11 @@ internal fun LessonTimesPage(
     settings: AppSettings,
     onSettingsChange: (AppSettings) -> Unit,
     onBack: () -> Unit,
-    onOpenTimetable: (String) -> Unit
+    onOpenTimetable: (String) -> Unit,
+    scope: TimetableScope = TimetableScope.Schedule
 ) {
     var showNewDialog by remember { mutableStateOf(false) }
+    val isDefaults = scope == TimetableScope.Defaults
 
     BasicScreen(
         // 返回按钮放最左边（标题左边）
@@ -95,8 +105,12 @@ internal fun LessonTimesPage(
                 }
             )
         },
-        title = "上课时间",
-        subtitle = "候选时间表 · 多余节次自动忽略",
+        title = if (isDefaults) "默认上课时间表" else "上课时间",
+        subtitle = if (isDefaults) {
+            "新建课表的默认作息"
+        } else {
+            "候选时间表 · 多余节次自动忽略"
+        },
         toolButtons = {
             TitleBarButton(
                 onClick = { showNewDialog = true },
@@ -128,22 +142,44 @@ internal fun LessonTimesPage(
                 )
             }
 
-            if (settings.timetables.isNotEmpty()) {
-                ItemOuterTitle(text = "候选时间表")
-                RoundedColumn {
-                    settings.timetables.forEachIndexed { index, timetable ->
-                        TimetableRow(
-                            name = timetable.name,
-                            slotCount = timetable.slots.size,
-                            active = settings.activeTimetableId == timetable.id,
-                            onClick = { onOpenTimetable(timetable.id) },
-                            onActivate = {
-                                onSettingsChange(settings.copy(activeTimetableId = timetable.id))
-                            }
+            // 来自「设置 → 全局课表设置」的默认时间表（新建本课表时快照进来的）
+            val fromDefaults = settings.timetables.filter { it.fromDefaults }
+            val custom = settings.timetables.filterNot { it.fromDefaults }
+
+            if (isDefaults) {
+                if (settings.timetables.isNotEmpty()) {
+                    ItemOuterTitle(text = "默认时间表")
+                    RoundedColumn {
+                        TimetableRows(
+                            timetables = settings.timetables,
+                            settings = settings,
+                            onSettingsChange = onSettingsChange,
+                            onOpenTimetable = onOpenTimetable,
+                            isDefaults = true
                         )
-                        if (index != settings.timetables.lastIndex) {
-                            ItemDivider()
-                        }
+                    }
+                }
+            } else {
+                if (fromDefaults.isNotEmpty()) {
+                    ItemOuterTitle(text = "默认时间表（来自全局课表设置）")
+                    RoundedColumn {
+                        TimetableRows(
+                            timetables = fromDefaults,
+                            settings = settings,
+                            onSettingsChange = onSettingsChange,
+                            onOpenTimetable = onOpenTimetable
+                        )
+                    }
+                }
+                if (custom.isNotEmpty()) {
+                    ItemOuterTitle(text = "本课表自定义时间表")
+                    RoundedColumn {
+                        TimetableRows(
+                            timetables = custom,
+                            settings = settings,
+                            onSettingsChange = onSettingsChange,
+                            onOpenTimetable = onOpenTimetable
+                        )
                     }
                 }
             }
@@ -154,8 +190,14 @@ internal fun LessonTimesPage(
             )
 
             ItemTip(
-                text = "点时间表进入编辑（改名、增删节次、调整起止时间）；点「启用」切换当前作息。" +
-                    "课表只显示「一天课程节数」内的节次，多余的节次自动忽略。"
+                text = if (isDefaults) {
+                    "这里的时间表是**新建课表**时的默认作息（最少保留一张）；" +
+                        "已经建好的课表不会跟着变，要改它们请到课表页「⋯ → 课表设置 → 上课时间」。"
+                } else {
+                    "「默认时间表」是新建本课表时从「设置 → 全局课表设置」复制来的，" +
+                        "在这里改名/改时间/删除都只影响本课表；「本课表自定义时间表」是本课表里新建的。" +
+                        "点「启用」切换当前作息，课表只显示「一天课程节数」内的节次。"
+                }
             )
         }
     }
@@ -171,7 +213,9 @@ internal fun LessonTimesPage(
                             id = id,
                             name = name,
                             // 复制当前作息作为底稿，之后按需增删节次
-                            slots = settings.activeLessonTimes()
+                            slots = settings.activeLessonTimes(),
+                            // 默认值页里新建的也是默认时间表；课表里新建的是本课表自建
+                            fromDefaults = isDefaults
                         ),
                         activeTimetableId = id
                     )
@@ -184,9 +228,39 @@ internal fun LessonTimesPage(
     }
 }
 
+/** 时间表行列表（同一分组内带分隔线）。 */
+@Composable
+private fun TimetableRows(
+    timetables: List<LessonTimetable>,
+    settings: AppSettings,
+    onSettingsChange: (AppSettings) -> Unit,
+    onOpenTimetable: (String) -> Unit,
+    isDefaults: Boolean = false
+) {
+    timetables.forEachIndexed { index, timetable ->
+        TimetableRow(
+            name = timetable.name,
+            slotCount = timetable.slots.size,
+            active = settings.activeTimetableId == timetable.id,
+            onClick = { onOpenTimetable(timetable.id) },
+            onActivate = {
+                onSettingsChange(settings.copy(activeTimetableId = timetable.id))
+            },
+            // 全局默认值页里「启用」的含义是「新建课表默认用哪张」
+            activeLabel = if (isDefaults) "✓ 新建课表默认" else "✓ 使用中",
+            activateLabel = if (isDefaults) "设为默认" else "启用"
+        )
+        if (index != timetables.lastIndex) {
+            ItemDivider()
+        }
+    }
+}
+
 /**
  * 时间表编辑子页（NavDisplay 推送）：
- * 改名、逐节调整起止时间（时间点弹层滑块选择）、增删节次、设为当前、删除（二次确认）。
+ * 改名、逐节调整起止时间（时间点弹层滚轮选择）、增删节次、设为当前、删除（二次确认）。
+ *
+ * @param canDelete 是否允许删除；全局默认值页在只剩一张时传 false（最少保留一张）
  */
 @OptIn(UnstableSaltUiApi::class)
 @Composable
@@ -194,7 +268,8 @@ internal fun TimetableEditPage(
     timetableId: String,
     settings: AppSettings,
     onSettingsChange: (AppSettings) -> Unit,
-    onBack: () -> Unit
+    onBack: () -> Unit,
+    canDelete: Boolean = true
 ) {
     val index = settings.timetables.indexOfFirst { it.id == timetableId }
     val timetable = settings.timetables.getOrNull(index)
@@ -398,9 +473,14 @@ internal fun TimetableEditPage(
 
             ItemOuterTextButton(
                 text = "删除时间表",
-                textColor = SaltTheme.colors.error,
-                onClick = { confirmDelete = true }
+                textColor = if (canDelete) SaltTheme.colors.error else SaltTheme.colors.subText,
+                onClick = { if (canDelete) confirmDelete = true }
             )
+            if (!canDelete) {
+                ItemTip(
+                    text = "默认时间表至少要保留一张：先「新建时间表」，再删除这张。"
+                )
+            }
         }
     }
 
@@ -472,7 +552,9 @@ private fun TimetableRow(
     slotCount: Int,
     active: Boolean,
     onClick: () -> Unit,
-    onActivate: () -> Unit
+    onActivate: () -> Unit,
+    activeLabel: String = "✓ 使用中",
+    activateLabel: String = "启用"
 ) {
     Row(
         modifier = Modifier
@@ -497,14 +579,14 @@ private fun TimetableRow(
         }
         if (active) {
             Text(
-                text = "✓ 使用中",
+                text = activeLabel,
                 fontSize = SaltTheme.textStyles.sub.fontSize,
                 fontWeight = FontWeight.Medium,
                 color = SaltTheme.colors.highlight
             )
         } else {
             Text(
-                text = "启用",
+                text = activateLabel,
                 fontSize = SaltTheme.textStyles.sub.fontSize,
                 color = SaltTheme.colors.highlight,
                 modifier = Modifier
@@ -648,8 +730,27 @@ private fun NewTimetableDialog(
     }
 }
 
+/** 允许的小时档位（由允许的分钟区间推出）。 */
+internal fun pickerHourRange(minMinute: Int, maxMinute: Int): IntRange =
+    (minMinute / 60)..(maxMinute / 60)
+
 /**
- * 时间点选择弹层：大号 HH:mm 预览 + 小时/分钟两个滑块。
+ * 某小时下允许的分钟区间：首/末小时会被 [minMinute] / [maxMinute] 裁掉一部分。
+ *
+ * 例：允许 08:00–09:30 时，8 点可 0..59，9 点只能 0..30。
+ * 区间永远非空（滚轮的候选列表不能为空）。
+ */
+internal fun pickerMinuteRange(minMinute: Int, maxMinute: Int, hour: Int): IntRange {
+    val start = (minMinute - hour * 60).coerceAtLeast(0)
+    val end = (maxMinute - hour * 60).coerceAtMost(59)
+    return start..end.coerceAtLeast(start)
+}
+
+/**
+ * 时间点选择弹层：大号 HH:mm 预览 + 小时/分钟两个**滚轮**（NumberPicker 风格）。
+ *
+ * 滚轮的候选区间按 [minMinute] / [maxMinute] 收紧（如「开始必须早于结束」）：
+ * 小时只能选允许的那几档，分钟只列出当前小时下允许的值，所以滚不出非法时间。
  *
  * @param minMinute 最小分钟数（含，如「开始必须早于结束」时约束）
  * @param maxMinute 最大分钟数（含）
@@ -668,8 +769,17 @@ private fun SlotTimePickerDialog(
     }
     val hour = minute / 60
     val minuteOfHour = minute % 60
-    val hourMin = minMinute / 60
-    val hourMax = maxMinute / 60
+
+    // 小时候选：minMinute 所在小时 ~ maxMinute 所在小时
+    val hourRange = pickerHourRange(minMinute, maxMinute)
+    val hours = remember(hourRange) {
+        hourRange.map { it.toString().padStart(2, '0') }
+    }
+    // 分钟候选：随当前小时变化（首/末小时会被裁掉一部分）
+    val minuteRange = pickerMinuteRange(minMinute, maxMinute, hour)
+    val minutes = remember(minuteRange) {
+        minuteRange.map { it.toString().padStart(2, '0') }
+    }
 
     BasicDialog(onDismissRequest = onDismissRequest) {
         DialogTitle(text = title)
@@ -685,31 +795,39 @@ private fun SlotTimePickerDialog(
                 .padding(vertical = 4.dp)
         )
 
-        PickerLabelRow(label = "小时", value = hour.toString())
-        Slider(
-            value = hour.toFloat(),
-            onValueChange = { h ->
-                minute = (h.toInt() * 60 + minuteOfHour).coerceIn(minMinute, maxMinute)
-            },
-            valueRange = hourMin.toFloat()..hourMax.toFloat(),
-            steps = (hourMax - hourMin - 1).coerceAtLeast(0),
-            colors = pickerSliderColors(),
-            modifier = Modifier.padding(horizontal = SaltTheme.dimens.padding)
-        )
-
-        val mStart = (minMinute - hour * 60).coerceAtLeast(0)
-        val mEnd = (maxMinute - hour * 60).coerceAtMost(59).coerceAtLeast(mStart)
-        PickerLabelRow(label = "分钟", value = minuteOfHour.toString().padStart(2, '0'))
-        Slider(
-            value = minuteOfHour.toFloat(),
-            onValueChange = { m ->
-                minute = (hour * 60 + m.toInt()).coerceIn(minMinute, maxMinute)
-            },
-            valueRange = mStart.toFloat()..mEnd.toFloat(),
-            steps = (mEnd - mStart - 1).coerceAtLeast(0),
-            colors = pickerSliderColors(),
-            modifier = Modifier.padding(horizontal = SaltTheme.dimens.padding)
-        )
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = SaltTheme.dimens.padding),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(4.dp)
+        ) {
+            WheelPickerColumn(
+                items = hours,
+                selectedIndex = hour - hourRange.first,
+                onSelectedIndexChange = { index ->
+                    val picked = hourRange.first + index
+                    minute = (picked * 60 + minuteOfHour).coerceIn(minMinute, maxMinute)
+                },
+                label = "小时",
+                modifier = Modifier.weight(1f)
+            )
+            Text(
+                text = ":",
+                fontSize = SaltTheme.textStyles.largeTitle.fontSize,
+                fontWeight = FontWeight.Bold,
+                color = SaltTheme.colors.subText
+            )
+            WheelPickerColumn(
+                items = minutes,
+                selectedIndex = (minuteOfHour - minuteRange.first).coerceIn(0, minutes.lastIndex),
+                onSelectedIndexChange = { index ->
+                    minute = (hour * 60 + (minuteRange.first + index)).coerceIn(minMinute, maxMinute)
+                },
+                label = "分钟",
+                modifier = Modifier.weight(1f)
+            )
+        }
 
         Row(
             modifier = Modifier
@@ -730,35 +848,5 @@ private fun SlotTimePickerDialog(
                 modifier = Modifier.weight(1f)
             )
         }
-    }
-}
-
-@Composable
-private fun pickerSliderColors() = SliderDefaults.colors(
-    thumbColor = SaltTheme.colors.highlight,
-    activeTrackColor = SaltTheme.colors.highlight,
-    inactiveTrackColor = SaltTheme.colors.stroke
-)
-
-/** 「小时 / 分钟」标签行。 */
-@Composable
-private fun PickerLabelRow(label: String, value: String) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = SaltTheme.dimens.padding),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Text(
-            text = label,
-            fontSize = SaltTheme.textStyles.main.fontSize,
-            color = SaltTheme.colors.text,
-            modifier = Modifier.weight(1f)
-        )
-        Text(
-            text = value,
-            fontSize = SaltTheme.textStyles.main.fontSize,
-            color = SaltTheme.colors.subText
-        )
     }
 }

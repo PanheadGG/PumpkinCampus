@@ -16,7 +16,6 @@ import androidx.compose.ui.unit.dp
 import com.moriafly.salt.ui.Button
 import com.moriafly.salt.ui.ButtonAppearance
 import com.moriafly.salt.ui.ButtonIntent
-import com.moriafly.salt.ui.Icon
 import com.moriafly.salt.ui.Item
 import com.moriafly.salt.ui.ItemCheck
 import com.moriafly.salt.ui.ItemContainer
@@ -24,16 +23,14 @@ import com.moriafly.salt.ui.ItemInfo
 import com.moriafly.salt.ui.ItemInfoType
 import com.moriafly.salt.ui.ItemLabelValueContainer
 import com.moriafly.salt.ui.ItemOuterLargeTitle
-import com.moriafly.salt.ui.ItemOuterTitle
 import com.moriafly.salt.ui.ItemOuterTip
+import com.moriafly.salt.ui.ItemOuterTitle
 import com.moriafly.salt.ui.ItemSwitcher
 import com.moriafly.salt.ui.LabelValue
 import com.moriafly.salt.ui.Switcher
 import com.moriafly.salt.ui.UnstableSaltUiApi
-import com.moriafly.salt.ui.dialog.YesNoDialog
 import com.moriafly.salt.ui.dialog.YesDialog
-import com.moriafly.salt.ui.icons.SaltIcons
-import com.moriafly.salt.ui.icons.Success
+import com.moriafly.salt.ui.dialog.YesNoDialog
 import com.moriafly.salt.ui.outerPadding
 import com.moriafly.salt.ui.popup.rememberPopupState
 import com.moriafly.salt.ui.rememberScrollState
