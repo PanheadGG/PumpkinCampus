@@ -3,5 +3,10 @@ TEAM_ID=
 PRODUCT_NAME=PumpkinCampus
 PRODUCT_BUNDLE_IDENTIFIER=com.pgigi.pumpkincampus.PumpkinCampus$(TEAM_ID)
 
+// 「今日课程」Widget Extension 的 Bundle ID：必须是**主 App Bundle ID + 后缀**
+// （扩展的 Bundle ID 必须以宿主 App 的 Bundle ID 为前缀，否则无法嵌入），
+// 因此这里把后缀写在 $(TEAM_ID) 之后，而不是拼在 $(TEAM_ID) 之前。
+WIDGET_BUNDLE_IDENTIFIER=com.pgigi.pumpkincampus.PumpkinCampus$(TEAM_ID).TodayScheduleWidget
+
 CURRENT_PROJECT_VERSION=1
 MARKETING_VERSION=1.0

@@ -6,10 +6,12 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.cinterop.addressOf
 import kotlinx.cinterop.usePinned
 import platform.Foundation.NSData
 import platform.Foundation.NSURL
+import platform.Foundation.dataWithContentsOfURL
 import platform.UIKit.UIApplication
 import platform.UIKit.UIDocumentPickerDelegateProtocol
 import platform.UIKit.UIDocumentPickerMode
@@ -36,7 +38,7 @@ actual fun rememberBinaryFilePicker(onResult: (ByteArray?) -> Unit): () -> Unit 
                 // 取最上层可弹窗的控制器
                 var top = rootVc
                 while (true) {
-                    val presented = top.presentedViewController ?: break
+                    val presented = top?.presentedViewController ?: break
                     top = presented
                 }
 
@@ -66,6 +68,7 @@ actual fun rememberBinaryFilePicker(onResult: (ByteArray?) -> Unit): () -> Unit 
 }
 
 /** 把 NSData 拷成 Kotlin ByteArray（失败返回 null）。 */
+@OptIn(ExperimentalForeignApi::class)
 private fun readBytes(url: NSURL): ByteArray? {
     val data = runCatching { NSData.dataWithContentsOfURL(url) }.getOrNull() ?: return null
     val length = data.length.toInt()

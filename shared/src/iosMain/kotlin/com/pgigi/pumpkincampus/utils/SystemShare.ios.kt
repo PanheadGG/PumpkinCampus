@@ -2,6 +2,7 @@ package com.pgigi.pumpkincampus.utils
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
+import kotlinx.cinterop.BetaInteropApi
 import platform.Foundation.NSString
 import platform.Foundation.create
 import platform.UIKit.UIActivityViewController
@@ -11,6 +12,7 @@ import platform.UIKit.UIApplication
  * iOS：`UIActivityViewController` 系统分享面板。
  * API 签名对照 Kotlin/Native 平台库 `platform.UIKit` klib 核实。
  */
+@OptIn(BetaInteropApi::class)
 @Composable
 actual fun rememberTextSharer(): (String) -> Unit = remember {
     { text ->

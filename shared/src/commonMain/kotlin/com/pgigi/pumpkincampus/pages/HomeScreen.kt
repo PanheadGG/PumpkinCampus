@@ -47,7 +47,6 @@ import com.pgigi.pumpkincampus.plugin.PluginScheduleStore
 import com.pgigi.pumpkincampus.plugin.PluginUiState
 import com.pgigi.pumpkincampus.plugin.SavedPluginConfig
 import com.pgigi.pumpkincampus.plugin.buildPluginConfigJson
-import com.pgigi.pumpkincampus.plugin.configTypeOf
 import com.pgigi.pumpkincampus.plugin.deletePluginSecrets
 import com.pgigi.pumpkincampus.plugin.loadPluginConfig
 import com.pgigi.pumpkincampus.plugin.migratePlaintextPluginSecrets
@@ -66,7 +65,10 @@ import com.pgigi.pumpkincampus.settings.DatePickerDialog
 import com.pgigi.pumpkincampus.settings.SettingsPage
 import com.pgigi.pumpkincampus.utils.FileStoreUtils
 import com.pgigi.pumpkincampus.utils.JsonUtil
+import com.pgigi.pumpkincampus.utils.WidgetDataHelper
+import com.pgigi.pumpkincampus.utils.reloadWidgetTimelines
 import com.pgigi.pumpkincampus.utils.rememberJsonFileSaver
+import com.pgigi.pumpkincampus.utils.saveWidgetData
 import io.androidpoet.dhyantoast.ToastAlignment
 import io.androidpoet.dhyantoast.ToastCategory
 import io.androidpoet.dhyantoast.ToastHost
@@ -160,6 +162,8 @@ internal fun HomeScreen(onColorModeChange: (String) -> Unit = {}) {
     val displayCourses = customCourses + pluginCourses
     // 应用设置（settings.json）= **全局显示项**（颜色模式、子标题课表名、辅助线、课表外观）
     var settings by remember { mutableStateOf(AppSettings()) }
+    // 首次加载（课表档案 + 设置）完成前不写小组件数据，避免把空课表当成用户课表写进去
+    var archiveLoaded by remember { mutableStateOf(false) }
     // 当前课表的生效设置：课表专属设置（未定制时用全局设置兜底）
     // + 全局显示项（辅助线/课表外观等，所有课表共用，见 AppSettings.withGlobalDisplay）
     val scheduleSettings = (book.activeSchedule()?.settings ?: settings).withGlobalDisplay(settings)
@@ -191,11 +195,35 @@ internal fun HomeScreen(onColorModeChange: (String) -> Unit = {}) {
 
         // 应用设置
         settings = readSettings()
+
+        archiveLoaded = true
     }
 
     // 设置变更后写回 settings.json（含首次加载后的写入，值相同，无副作用）
     LaunchedEffect(settings) {
         writeSettings(settings)
+    }
+
+    /**
+     * 桌面小组件数据（`widget_data.json`）：课表档案 / 应用设置 / 插件同步结果任一变化就重建，
+     * 并通知小组件刷新。
+     *
+     * 写入的是**原料**（课程 + 作息 + 学期周数 + 第一周第一天），「今天还剩几节 / 明天几节」
+     * 由小组件在每次渲染时自己算（见 [WidgetDataHelper]）——这样课程下课、跨零点、
+     * 系统定时刷新都不需要应用在前台。
+     *
+     * 数据源 = 当前打开的课表（含插件只读层，去重后与导出一致）；切课表后小组件随之切换。
+     */
+    LaunchedEffect(archiveLoaded, book, settings, pluginArchive) {
+        if (!archiveLoaded) return@LaunchedEffect
+        saveWidgetData(
+            WidgetDataHelper.buildWidgetData(
+                courses = displayCourses.distinct(),
+                settings = scheduleSettings,
+                scheduleName = book.activeSchedule()?.name ?: ""
+            )
+        )
+        reloadWidgetTimelines()
     }
 
     // 颜色模式（跟随系统 / 浅色 / 深色）：加载后与每次修改时上报给 App 应用主题

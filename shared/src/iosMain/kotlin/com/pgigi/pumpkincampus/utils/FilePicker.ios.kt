@@ -6,9 +6,11 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import kotlinx.cinterop.ExperimentalForeignApi
 import platform.Foundation.NSString
 import platform.Foundation.NSURL
 import platform.Foundation.NSUTF8StringEncoding
+import platform.Foundation.stringWithContentsOfURL
 import platform.UIKit.UIApplication
 import platform.UIKit.UIDocumentPickerViewController
 import platform.UIKit.UIDocumentPickerDelegateProtocol
@@ -19,6 +21,7 @@ import platform.darwin.NSObject
  * iOS：`UIDocumentPickerViewController`（public.json，Import 模式返回副本），
  * 读取所选 JSON 文件全文。
  */
+@OptIn(ExperimentalForeignApi::class)
 @Composable
 actual fun rememberJsonFilePicker(onResult: (String?) -> Unit): () -> Unit {
     // 回调走最新引用，避免 remember 的闭包捕获过期 lambda
@@ -34,7 +37,7 @@ actual fun rememberJsonFilePicker(onResult: (String?) -> Unit): () -> Unit {
                 // 取最上层可弹窗的控制器
                 var top = rootVc
                 while (true) {
-                    val presented = top.presentedViewController ?: break
+                    val presented = top?.presentedViewController ?: break
                     top = presented
                 }
 

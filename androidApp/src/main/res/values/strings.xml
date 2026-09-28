@@ -1,3 +1,5 @@
 <resources>
     <string name="app_name">南瓜校园</string>
+    <!-- 「今日课程」桌面小组件：与 Pumpkin-Toolkit 同一份文案 -->
+    <string name="widget_today_schedule_description">显示今日课程及明日课程</string>
 </resources>

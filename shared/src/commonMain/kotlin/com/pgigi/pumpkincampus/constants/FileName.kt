@@ -21,4 +21,12 @@ object FileName {
 
     /** 插件 KV 数据根目录（相对数据目录）：`plugin-kv/<插件id>/<课表id>.json`，按课表隔离。 */
     const val PLUGIN_KV_DIR = "plugin-kv"
+
+    /**
+     * 桌面小组件数据（`widget_data.json`）：当前课表的课程 + 生效设置快照。
+     *
+     * Android 小组件按 `filesDir` 直读、iOS 小组件从 App Group 容器读取，两端都在
+     * **渲染时**自行算「今天还剩几节 / 明天几节」，见 `WidgetDataHelper`。
+     */
+    const val WIDGET_DATA = "widget_data.json"
 }

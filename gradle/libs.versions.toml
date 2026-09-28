@@ -26,6 +26,8 @@ navigation3 = "1.1.1"
 ktor = "3.4.0"
 # 插件密码类配置的加密存储（Android EncryptedSharedPreferences / iOS Keychain）
 kvault = "1.12.0"
+# 桌面小组件（Android Glance）
+glance = "1.1.1"
 
 splashscreen = "1.2.0"
 
@@ -71,6 +73,9 @@ ktor-client-darwin = { module = "io.ktor:ktor-client-darwin", version.ref = "kto
 kvault = { module = "com.liftric:kvault", version.ref = "kvault" }
 
 splashscreen = { group = "androidx.core", name = "core-splashscreen", version.ref = "splashscreen" }
+
+# 桌面小组件（androidApp）：Glance 的 AppWidget 运行时
+glance-appwidget = { module = "androidx.glance:glance-appwidget", version.ref = "glance" }
 
 
 [plugins]

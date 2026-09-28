@@ -2,11 +2,14 @@ package com.pgigi.pumpkincampus.utils
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
+import kotlinx.cinterop.BetaInteropApi
+import kotlinx.cinterop.ExperimentalForeignApi
 import platform.Foundation.NSString
 import platform.Foundation.NSTemporaryDirectory
 import platform.Foundation.NSURL
 import platform.Foundation.NSUTF8StringEncoding
 import platform.Foundation.create
+import platform.Foundation.writeToFile
 import platform.UIKit.UIApplication
 import platform.UIKit.UIDocumentPickerViewController
 
@@ -14,6 +17,7 @@ import platform.UIKit.UIDocumentPickerViewController
  * iOS：先把 JSON 写入临时目录，再用 `UIDocumentPickerViewController(forExportingURLs:asCopy:)`
  * 调起系统「存储到…」保存流程（文件名即传入的 fileName）。
  */
+@OptIn(ExperimentalForeignApi::class, BetaInteropApi::class)
 @Composable
 actual fun rememberJsonFileSaver(): (fileName: String, content: String) -> Unit {
     return remember {
@@ -28,7 +32,7 @@ actual fun rememberJsonFileSaver(): (fileName: String, content: String) -> Unit 
                     // 取最上层可弹窗的控制器
                     var top = rootVc
                     while (true) {
-                        val presented = top.presentedViewController ?: break
+                        val presented = top?.presentedViewController ?: break
                         top = presented
                     }
                     val picker = UIDocumentPickerViewController(

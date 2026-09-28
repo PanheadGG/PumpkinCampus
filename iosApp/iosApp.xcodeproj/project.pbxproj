@@ -6,8 +6,47 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		D1E2F3A4B5C60718293A4B53 /* TodayScheduleWidget.appex in Embed App Extensions */ = {isa = PBXBuildFile; fileRef = D1E2F3A4B5C60718293A4B52 /* TodayScheduleWidget.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		F1E2D3C4B5A60718293041B1 /* TodayScheduleWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1F2A3B4C5D60718293041A1 /* TodayScheduleWidget.swift */; };
+		F1E2D3C4B5A60718293041B2 /* TodayScheduleProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1F2A3B4C5D60718293041A2 /* TodayScheduleProvider.swift */; };
+		F1E2D3C4B5A60718293041B3 /* TodayScheduleWidgetView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1F2A3B4C5D60718293041A3 /* TodayScheduleWidgetView.swift */; };
+		F1E2D3C4B5A60718293041B4 /* WidgetDataModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1F2A3B4C5D60718293041A4 /* WidgetDataModels.swift */; };
+		F1E2D3C4B5A60718293041B5 /* WidgetHelper.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1F2A3B4C5D60718293041A5 /* WidgetHelper.swift */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		D1E2F3A4B5C60718293A4B55 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 316A94B4A24CF9CC25321B91 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = D1E2F3A4B5C60718293A4B51;
+			remoteInfo = TodayScheduleWidget;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		D1E2F3A4B5C60718293A4B54 /* Embed App Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				D1E2F3A4B5C60718293A4B53 /* TodayScheduleWidget.appex in Embed App Extensions */,
+			);
+			name = "Embed App Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
+
 /* Begin PBXFileReference section */
 		BEDB719519F70028E9B541FB /* PumpkinCampus.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = PumpkinCampus.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		D1E2F3A4B5C60718293A4B52 /* TodayScheduleWidget.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = TodayScheduleWidget.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		E1F2A3B4C5D60718293041A1 /* TodayScheduleWidget.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TodayScheduleWidget.swift; sourceTree = "<group>"; };
+		E1F2A3B4C5D60718293041A2 /* TodayScheduleProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TodayScheduleProvider.swift; sourceTree = "<group>"; };
+		E1F2A3B4C5D60718293041A3 /* TodayScheduleWidgetView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TodayScheduleWidgetView.swift; sourceTree = "<group>"; };
+		E1F2A3B4C5D60718293041A4 /* WidgetDataModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WidgetDataModels.swift; sourceTree = "<group>"; };
+		E1F2A3B4C5D60718293041A5 /* WidgetHelper.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WidgetHelper.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -44,6 +83,13 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		D1E2F3A4B5C60718293A4B5B /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
@@ -52,14 +98,28 @@
 			children = (
 				A53D8ED9515D737FB885FD30 /* Configuration */,
 				6EE741BD182E8286452C3033 /* iosApp */,
+				D1E2F3A4B5C60718293A4B57 /* TodayScheduleWidget */,
 				EF44D49AA9C9408B3DBB1B09 /* Products */,
 			);
+			sourceTree = "<group>";
+		};
+		D1E2F3A4B5C60718293A4B57 /* TodayScheduleWidget */ = {
+			isa = PBXGroup;
+			children = (
+				E1F2A3B4C5D60718293041A1 /* TodayScheduleWidget.swift */,
+				E1F2A3B4C5D60718293041A2 /* TodayScheduleProvider.swift */,
+				E1F2A3B4C5D60718293041A3 /* TodayScheduleWidgetView.swift */,
+				E1F2A3B4C5D60718293041A4 /* WidgetDataModels.swift */,
+				E1F2A3B4C5D60718293041A5 /* WidgetHelper.swift */,
+			);
+			path = TodayScheduleWidget;
 			sourceTree = "<group>";
 		};
 		EF44D49AA9C9408B3DBB1B09 /* Products */ = {
 			isa = PBXGroup;
 			children = (
 				BEDB719519F70028E9B541FB /* PumpkinCampus.app */,
+				D1E2F3A4B5C60718293A4B52 /* TodayScheduleWidget.appex */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -75,10 +135,12 @@
 				0AE745EC9844F248AA281BBF /* Sources */,
 				A2DB89EB828DE7175C5D06DE /* Frameworks */,
 				CFAA797AB3F0E439086F2AF0 /* Resources */,
+				D1E2F3A4B5C60718293A4B54 /* Embed App Extensions */,
 			);
 			buildRules = (
 			);
 			dependencies = (
+				D1E2F3A4B5C60718293A4B56 /* PBXTargetDependency */,
 			);
 			fileSystemSynchronizedGroups = (
 				6EE741BD182E8286452C3033 /* iosApp */,
@@ -89,6 +151,25 @@
 			productName = iosApp;
 			productReference = BEDB719519F70028E9B541FB /* PumpkinCampus.app */;
 			productType = "com.apple.product-type.application";
+		};
+		D1E2F3A4B5C60718293A4B51 /* TodayScheduleWidget */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = D1E2F3A4B5C60718293A4B58 /* Build configuration list for PBXNativeTarget "TodayScheduleWidget" */;
+			buildPhases = (
+				D1E2F3A4B5C60718293A4B5D /* Sources */,
+				D1E2F3A4B5C60718293A4B5B /* Frameworks */,
+				D1E2F3A4B5C60718293A4B5C /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = TodayScheduleWidget;
+			packageProductDependencies = (
+			);
+			productName = TodayScheduleWidget;
+			productReference = D1E2F3A4B5C60718293A4B52 /* TodayScheduleWidget.appex */;
+			productType = "com.apple.product-type.app-extension";
 		};
 /* End PBXNativeTarget section */
 
@@ -101,6 +182,9 @@
 				LastUpgradeCheck = 1620;
 				TargetAttributes = {
 					0334A888624DFFA5A90D12D1 = {
+						CreatedOnToolsVersion = 16.2;
+					};
+					D1E2F3A4B5C60718293A4B51 = {
 						CreatedOnToolsVersion = 16.2;
 					};
 				};
@@ -120,12 +204,20 @@
 			projectRoot = "";
 			targets = (
 				0334A888624DFFA5A90D12D1 /* iosApp */,
+				D1E2F3A4B5C60718293A4B51 /* TodayScheduleWidget */,
 			);
 		};
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
 		CFAA797AB3F0E439086F2AF0 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		D1E2F3A4B5C60718293A4B5C /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -164,7 +256,27 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		D1E2F3A4B5C60718293A4B5D /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				F1E2D3C4B5A60718293041B1 /* TodayScheduleWidget.swift in Sources */,
+				F1E2D3C4B5A60718293041B2 /* TodayScheduleProvider.swift in Sources */,
+				F1E2D3C4B5A60718293041B3 /* TodayScheduleWidgetView.swift in Sources */,
+				F1E2D3C4B5A60718293041B4 /* WidgetDataModels.swift in Sources */,
+				F1E2D3C4B5A60718293041B5 /* WidgetHelper.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		D1E2F3A4B5C60718293A4B56 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = D1E2F3A4B5C60718293A4B51 /* TodayScheduleWidget */;
+			targetProxy = D1E2F3A4B5C60718293A4B55 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
 		042CAB51ED87D28C510390E7 /* Debug */ = {
@@ -296,6 +408,7 @@
 				ARCHS = arm64;
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = iosApp/PumpkinCampus.entitlements;
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				DEVELOPMENT_ASSET_PATHS = "\"iosApp/Preview Content\"";
@@ -324,6 +437,7 @@
 				ARCHS = arm64;
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = iosApp/PumpkinCampus.entitlements;
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				DEVELOPMENT_ASSET_PATHS = "\"iosApp/Preview Content\"";
@@ -346,9 +460,74 @@
 			};
 			name = Release;
 		};
+		D1E2F3A4B5C60718293A4B59 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ARCHS = arm64;
+				CODE_SIGN_ENTITLEMENTS = TodayScheduleWidget/TodayScheduleWidget.entitlements;
+				CODE_SIGN_IDENTITY = "Apple Development";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = "${TEAM_ID}";
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = TodayScheduleWidget/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = "今日课程";
+				IPHONEOS_DEPLOYMENT_TARGET = 18.2;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "$(WIDGET_BUNDLE_IDENTIFIER)";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		D1E2F3A4B5C60718293A4B5A /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ARCHS = arm64;
+				CODE_SIGN_ENTITLEMENTS = TodayScheduleWidget/TodayScheduleWidget.entitlements;
+				CODE_SIGN_IDENTITY = "Apple Development";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = "${TEAM_ID}";
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = TodayScheduleWidget/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = "今日课程";
+				IPHONEOS_DEPLOYMENT_TARGET = 18.2;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "$(WIDGET_BUNDLE_IDENTIFIER)";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
+		D1E2F3A4B5C60718293A4B58 /* Build configuration list for PBXNativeTarget "TodayScheduleWidget" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				D1E2F3A4B5C60718293A4B59 /* Debug */,
+				D1E2F3A4B5C60718293A4B5A /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
 		96D7E1A7D68275DAF57DB6CB /* Build configuration list for PBXProject "iosApp" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (

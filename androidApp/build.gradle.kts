@@ -19,6 +19,9 @@ dependencies {
     debugImplementation(libs.compose.uiTooling)
 
     implementation(libs.splashscreen)
+
+    // 「今日课程」桌面小组件（Glance）
+    implementation(libs.glance.appwidget)
 }
 
 android {
