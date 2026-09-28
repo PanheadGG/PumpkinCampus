@@ -191,9 +191,23 @@ object PluginManager {
         return out
     }
 
+    /**
+     * 读插件包内的**单个文件**（相对包根的路径，如 `timetables.json`）。
+     *
+     * 只读一个文件、不遍历目录，供「插件推荐时间表」这类静态数据读取用；
+     * 文件不存在 / 读取失败都返回 null。
+     */
+    fun readFile(id: String, relativePath: String): String? {
+        if (!Regex("""[A-Za-z0-9][A-Za-z0-9._-]*""").matches(id)) return null
+        val clean = relativePath.replace('\\', '/').trimStart('/')
+        if (clean.isEmpty() || clean.split('/').any { it == ".." }) return null
+        val file = dataDir() / FileName.PLUGIN_DIR / id / clean
+        if (fs.metadataOrNull(file)?.isRegularFile != true) return null
+        return runCatching { fs.read(file) { readUtf8() } }.getOrNull()
+    }
+
     /** 深度优先收集目录内所有文件（相对路径 → UTF-8 文本）。 */
-    private fun collectFiles(root: Path, dir: Path, out: MutableMap<String, String>) {
-        val children = runCatching { fs.list(dir) }.getOrDefault(emptyList())
+    private fun collectFiles(root: Path, dir: Path, out: MutableMap<String, String>) {        val children = runCatching { fs.list(dir) }.getOrDefault(emptyList())
         for (child in children) {
             val meta = runCatching { fs.metadataOrNull(child) }.getOrNull() ?: continue
             if (meta.isDirectory) {

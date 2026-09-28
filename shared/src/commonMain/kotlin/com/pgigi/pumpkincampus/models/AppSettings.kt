@@ -20,9 +20,10 @@ data class DisplayReplace(
  * 节数不受限制——要用多少节就配置多少节；
  * 课表实际显示行数由 [AppSettings.lessonCount]（一天课程节数）决定，多余的节次自动忽略。
  *
- * @property fromDefaults 是否**来自「设置 → 全局课表设置」的默认时间表**：
- *   新建课表时默认时间表会被快照进该课表并打上此标记，用于在单课表页把
- *   「默认时间表」与本课表自建的区分开。标记只是来源说明，之后两边互不影响。
+ * @property fromDefaults 是否**来自「设置 → 全局课表设置」的全局时间表**：
+ *   新建课表时全局时间表会被快照进该课表并打上此标记，用于说明这张表的来源
+ *   （课表设置页标注「（来自默认）」）。标记只是来源说明，之后两边互不影响；
+ *   从「全局时间表」分组点「使用」复制进来的表属于本课表自建，不带这个标记（见 [withCopiedTimetable]）。
  */
 @Serializable
 data class LessonTimetable(
@@ -30,6 +31,24 @@ data class LessonTimetable(
     val name: String = "",
     val slots: List<LessonTime> = emptyList(),
     val fromDefaults: Boolean = false
+)
+
+/** 内置默认作息在「全局时间表」里的固定 id（[builtinTimetable]）。 */
+internal const val BUILTIN_TIMETABLE_ID = "builtin"
+
+/** 内置默认作息的名字。 */
+internal const val BUILTIN_TIMETABLE_NAME = "默认作息"
+
+/**
+ * 内置默认作息（[SampleLessonTimes]）——「全局时间表」里的**第一条**。
+ *
+ * 它和用户自己建的时间表没有区别：可以改名、改时间、删除；
+ * 只是「全局时间表」至少要留一张，从没配过时就由它兜底。
+ */
+internal fun builtinTimetable(): LessonTimetable = LessonTimetable(
+    id = BUILTIN_TIMETABLE_ID,
+    name = BUILTIN_TIMETABLE_NAME,
+    slots = SampleLessonTimes
 )
 
 /**
@@ -42,9 +61,14 @@ data class LessonTimetable(
  */
 @Serializable
 data class ScheduleDefaults(
-    /** 默认上课时间表（可以有多张，最少保留一张）。 */
+    /**
+     * **全局时间表**：新建课表的候选作息，**至少保留一张**。
+     *
+     * 内置的「默认作息」（[builtinTimetable]）也在里面，是一条普通条目（可改名/改时间/删除）。
+     * 课表页「上课时间」里这一组只当**来源**展示，点「使用」才复制一份进那张课表。
+     */
     val timetables: List<LessonTimetable> = emptyList(),
-    /** 默认启用哪张时间表；null = 新建课表先用内置默认作息。 */
+    /** 新建课表默认启用哪张；始终指向 [timetables] 里存在的一张（见 [normalized]）。 */
     val activeTimetableId: String? = null,
     /** 默认一天课程节数。 */
     val lessonCount: Int = 10,
@@ -55,32 +79,55 @@ data class ScheduleDefaults(
 ) {
 
     /**
-     * 新建课表的初始设置：默认时间表**快照**进新课表并标记 [LessonTimetable.fromDefaults]，
+     * 规范化「全局时间表」：
+     * - **至少保留一张**：空列表补回内置的「默认作息」；
+     * - [activeTimetableId] 必须指向列表里真实存在的一张；老数据里的 `null` 表示
+     *   「内置默认作息」，这里把它作为一张真实的「默认作息」补进列表，语义不变。
+     *
+     * 读取（[asEditableSettings]）与新建课表（[newScheduleSettings]）都先过这一层，
+     * 于是页面上永远至少有一张、且默认那张一定选得中。
+     */
+    fun normalized(): ScheduleDefaults {
+        val list = timetables.toMutableList()
+        if (list.isEmpty() || (activeTimetableId == null && list.none { it.id == BUILTIN_TIMETABLE_ID })) {
+            list.add(0, builtinTimetable())
+        }
+        val active = list.firstOrNull { it.id == activeTimetableId }?.id ?: list.first().id
+        return copy(timetables = list, activeTimetableId = active)
+    }
+
+    /**
+     * 新建课表的初始设置：全局时间表**快照**进新课表并标记 [LessonTimetable.fromDefaults]，
      * 节数/周数/显示替换照抄。
      *
      * 全局显示项（颜色模式、辅助线、课表外观）不在这里——它们始终读全局值。
      */
-    fun newScheduleSettings(): AppSettings = AppSettings(
-        timetables = timetables.map { it.copy(fromDefaults = true) },
-        activeTimetableId = activeTimetableId,
-        lessonCount = lessonCount,
-        semesterWeekCount = semesterWeekCount,
-        replaces = replaces
-    )
+    fun newScheduleSettings(): AppSettings {
+        val source = normalized()
+        return AppSettings(
+            timetables = source.timetables.map { it.copy(fromDefaults = true) },
+            activeTimetableId = source.activeTimetableId,
+            lessonCount = lessonCount,
+            semesterWeekCount = semesterWeekCount,
+            replaces = replaces
+        )
+    }
 
     /**
-     * 交给「上课时间」页面编辑用的视图。
+     * 交给「上课时间」页面编辑用的视图（[normalized] 保证至少一张、默认那张有效）。
      *
      * 该页面按 [AppSettings] 组织（课表专属字段），这里只填课表专属字段，
      * 编辑完用 [from] 取回默认值部分。
      */
-    fun asEditableSettings(): AppSettings = AppSettings(
-        timetables = timetables,
-        activeTimetableId = activeTimetableId,
-        lessonCount = lessonCount,
-        semesterWeekCount = semesterWeekCount,
-        replaces = replaces
-    )
+    fun asEditableSettings(): AppSettings = normalized().let { source ->
+        AppSettings(
+            timetables = source.timetables,
+            activeTimetableId = source.activeTimetableId,
+            lessonCount = lessonCount,
+            semesterWeekCount = semesterWeekCount,
+            replaces = replaces
+        )
+    }
 
     companion object {
         /** 从页面改回来的设置里取回默认值字段（只取课表专属部分）。 */

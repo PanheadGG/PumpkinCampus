@@ -20,6 +20,18 @@
     { "title": "学号", "key": "username", "description": "教务系统登录学号", "type": "string", "default": null },
     { "title": "密码", "key": "password", "description": "教务系统登录密码", "type": "password", "default": null },
     { "title": "学期", "key": "term", "description": "要同步的学期，如 2025-2026-1", "type": "string", "default": "2025-2026-1" },
+    {
+      // 示例：select 类型**只能从 options 里选**（配置弹层没有输入框），不需要就整块删掉
+      "title": "登录方式",
+      "key": "login_type",
+      "description": "select 类型：只能从 options 里选，配置弹层没有输入框",
+      "type": "select",
+      "default": "local",
+      "options": [
+        { "name": "本地登录", "value": "local" },
+        { "name": "统一身份认证平台登录", "value": "cas" }
+      ]
+    },
     { "title": "优先使用缓存", "key": "use_cache", "description": "拉取成功后缓存结果，教务系统打不开时展示缓存", "type": "bool", "default": true },
     { "title": "失败重试次数", "key": "retries", "description": "网络请求失败时的额外重试次数", "type": "int", "default": 2 }
   ]

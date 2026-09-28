@@ -1,5 +1,7 @@
 package com.pgigi.pumpkincampus.plugin
 
+import com.pgigi.pumpkincampus.models.LessonTimetable
+
 /**
  * 课表设置 / 设置页里插件相关的 UI 状态与回调（由 HomeScreen 构建并下发）。
  *
@@ -15,6 +17,8 @@ package com.pgigi.pumpkincampus.plugin
  * @property installing 是否正在从 zip 安装插件
  * @property message 最近一次安装/卸载结果提示（HomeScreen 统一弹窗）
  * @property pluginCourseCount 当前课表只读层里的插件课程数（插件同步 + 分享导入的快照）
+ * @property recommendedTimetables 当前插件的**推荐时间表**（读自插件包的 `timetables.json`，
+ *   由 HomeScreen 在插件变化时读一次；见 [PluginTimetableSection]）
  * @property onConvertAllPluginCourses 把当前课表的全部插件课程复制为自定义课程
  *   （先弹确认：插件课程保留，插件更新课表后可能出现重复课程）
  */
@@ -28,6 +32,7 @@ data class PluginUiState(
     val installing: Boolean = false,
     val message: String? = null,
     val pluginCourseCount: Int = 0,
+    val recommendedTimetables: List<LessonTimetable> = emptyList(),
     val onInstall: (ByteArray) -> Unit = {},
     val onUninstall: (String) -> Unit = {},
     val onDismissMessage: () -> Unit = {},
@@ -40,7 +45,39 @@ data class PluginUiState(
     val selected: InstalledPlugin?
         get() = installed.firstOrNull { it.id == selectedPluginId }
 
+    /** 插件推荐时间表来自哪个插件（提示文案用）。 */
+    val pluginDisplayName: String?
+        get() = selected?.manifest?.name
+
+    /** 「插件推荐时间表」分组的展示数据；没有绑定插件时返回 null（不显示分组）。 */
+    val timetableSection: PluginTimetableSection?
+        get() {
+            if (selectedPluginId.isNullOrBlank()) return null
+            return PluginTimetableSection(
+                pluginName = pluginDisplayName,
+                pluginMissing = selected == null,
+                timetables = recommendedTimetables
+            )
+        }
+
     /** 当前选择是否指向一个**已卸载**的插件（需要提示用户重新选择）。 */
     val selectedMissing: Boolean
         get() = !selectedPluginId.isNullOrBlank() && selected == null
 }
+
+/**
+ * 「课表设置 → 上课时间 → 插件推荐时间表」分组的展示数据。
+ *
+ * 数据来自插件包根目录的 `timetables.json`（纯数据，见 [readPluginTimetables]）：
+ * 选中插件后宿主直接读文件，**不需要先同步课表**；
+ * 用户在「上课时间」页点「使用」才复制成本课表的时间表。
+ *
+ * @property pluginName 当前课表绑定的插件名
+ * @property pluginMissing 绑定的插件已被卸载
+ * @property timetables 插件推荐的作息时间表（点「使用」即复制成本课表的表）
+ */
+data class PluginTimetableSection(
+    val pluginName: String? = null,
+    val pluginMissing: Boolean = false,
+    val timetables: List<LessonTimetable> = emptyList()
+)

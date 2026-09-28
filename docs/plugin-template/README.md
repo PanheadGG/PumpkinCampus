@@ -7,6 +7,7 @@
 ```
 manifest.json      清单：id / name / entry / minHostVersionCode / configs …
 index.js           入口：export async function getCourses(ctx)
+timetables.json    可选：推荐本校作息时间表（纯数据，宿主直接读取，见下）
 utils/util.js      工具库示例：周次、星期、时间解析与带重试的请求
 README.md          本文件
 ```
@@ -17,8 +18,10 @@ README.md          本文件
    - `id` 换成你自己的反向域名（全局唯一，改了等于新插件）；
    - `name` / `schoolName` / `author` / `updateTime` 按需修改；
    - `configs` 是给用户填的配置项：`title` 是显示名（`key` 省略时兼作键名，
-     建议显式写 `key`），`type` 支持 `string / password / int / bool`，
-     `default` 是**默认配置**——每个课表会另外保存自己的值。
+     建议显式写 `key`），`type` 支持 `string / password / int / bool / select`，
+     `default` 是**默认配置**——每个课表会另外保存自己的值；
+   - `options` 是候选值（`{ "name": "显示名", "value": "实际值" }`）：`select` 类型只能从中选
+     （没有输入框），其他类型点一下填入、也允许自己输入。
 2. **index.js**
    - 实现 `getCourses(ctx)`：登录 → 拉课表 → 解析 → 返回课程数组；
    - 删掉/替换模板里的两段示例写法（JSON 接口 / HTML 页面），换成你学校的真实接口；
@@ -27,6 +30,10 @@ README.md          本文件
      宿主会自动转换。
 3. **utils/util.js**：`parseWeekRanges / parseDay / parseClock / fetchWithRetry`
    可直接复用，也可以继续加自己的函数。
+4. **timetables.json**（可选）：把你学校的作息时间填进去，用户就能在
+   「课表设置 → 上课时间 → 插件推荐时间表」里一键套用；不需要就删掉这个文件。
+   格式是纯 JSON，`slots` 每项 `{ "start": "08:00", "end": "08:45" }`，
+   最多 5 张表、每张 40 节。
 
 ## 本地验证
 

@@ -243,8 +243,8 @@ internal fun SettingsPage(
                         )
                     },
                     onBack = { navigator.back() },
-                    // 默认时间表最少保留一张
-                    canDelete = settings.defaults.timetables.size > 1
+                    // 全局时间表最少保留一张
+                    canDelete = settings.defaults.normalized().timetables.size > 1
                 )
             }
             entry<AboutKey> {

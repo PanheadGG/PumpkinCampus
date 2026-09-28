@@ -339,7 +339,7 @@ internal fun SchedulePluginPage(
 /* 配置编辑弹层                                                         */
 /* ------------------------------------------------------------------ */
 
-/** 单个配置项的编辑弹层：按类型决定输入方式（密码掩码 / 整数过滤 / 普通文本）。 */
+/** 单个配置项的编辑弹层：按类型决定输入方式（密码掩码 / 整数过滤 / 普通文本 / 只能选）。 */
 @OptIn(UnstableSaltUiApi::class, ExperimentalLayoutApi::class)
 @Composable
 internal fun PluginConfigEditDialog(
@@ -352,6 +352,9 @@ internal fun PluginConfigEditDialog(
     var error by remember { mutableStateOf<String?>(null) }
     val isPassword = item.configType == PluginConfigType.PASSWORD
     val isInt = item.configType == PluginConfigType.INT
+    // select：只能从候选值里选，不给输入框（见 manifest 的 type: "select"）
+    val isSelect = item.configType == PluginConfigType.SELECT
+    val selectable = !isSelect || item.options.isNotEmpty()
 
     BasicDialog(onDismissRequest = onDismissRequest) {
         DialogTitle(text = item.title)
@@ -366,10 +369,15 @@ internal fun PluginConfigEditDialog(
                     .padding(horizontal = SaltTheme.dimens.padding, vertical = 4.dp)
             )
         }
-        // —— 候选值（manifest 的 configs[].options）：点一下填入，也可以自己输入 ——
+        // —— 候选值（manifest 的 configs[].options）——
+        // select：点选即选中，不能自己输入；其他类型：点一下填入，也可以自己输入
         if (item.options.isNotEmpty()) {
             Text(
-                text = "候选值（可直接点选，也可以自己在下面填写）",
+                text = if (isSelect) {
+                    "可选值（此项只能从下面选择，不能自己输入）"
+                } else {
+                    "候选值（可直接点选，也可以自己在下面填写）"
+                },
                 fontSize = SaltTheme.textStyles.sub.fontSize,
                 color = SaltTheme.colors.subText,
                 lineHeight = 16.sp,
@@ -387,11 +395,15 @@ internal fun PluginConfigEditDialog(
                 item.options.forEach { option ->
                     Button(
                         onClick = {
-                            value = option
+                            value = option.value
                             error = null
                         },
-                        text = if (option == value) "✓ $option" else option,
-                        appearance = if (option == value) {
+                        text = if (option.value == value) {
+                            "✓ " + option.name
+                        } else {
+                            option.name
+                        },
+                        appearance = if (option.value == value) {
                             ButtonAppearance.Filled
                         } else {
                             ButtonAppearance.Subtle
@@ -400,51 +412,64 @@ internal fun PluginConfigEditDialog(
                 }
             }
         }
-        BasicTextField(
-            value = value,
-            onValueChange = { raw ->
-                value = if (isInt) raw.filter { it.isDigit() } else raw
-                error = null
-            },
-            singleLine = true,
-            visualTransformation = if (isPassword) {
-                PasswordVisualTransformation()
-            } else {
-                VisualTransformation.None
-            },
-            // 密码项必须声明成密码类型：Android 会把输入框的 inputType 设成
-            // TYPE_TEXT_VARIATION_PASSWORD，系统/ROM 据此弹出「安全键盘」（小米安全键盘、
-            // 华为安全输入等），同时关掉输入法的联想、自动纠错与个性化学习。
-            // 只做 PasswordVisualTransformation（屏幕打码）是不够的：那只是显示层，
-            // 输入法仍然按普通文本框处理。
-            keyboardOptions = KeyboardOptions(
-                keyboardType = when {
-                    isPassword -> KeyboardType.Password
-                    isInt -> KeyboardType.Number
-                    else -> KeyboardType.Text
+        if (isSelect && item.options.isEmpty()) {
+            Text(
+                text = "插件没有为这一项提供可选值，请反馈插件作者。",
+                fontSize = SaltTheme.textStyles.sub.fontSize,
+                color = SaltTheme.colors.error,
+                lineHeight = 16.sp,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = SaltTheme.dimens.padding, vertical = 4.dp)
+            )
+        }
+        if (!isSelect) {
+            BasicTextField(
+                value = value,
+                onValueChange = { raw ->
+                    value = if (isInt) raw.filter { it.isDigit() } else raw
+                    error = null
                 },
-                // 配置项都是账号/地址/密码这类内容，任何联想与自动纠错都是干扰
-                autoCorrectEnabled = false,
-                imeAction = ImeAction.Done
-            ),
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = SaltTheme.dimens.padding, vertical = 6.dp),
-            textStyle = TextStyle(
-                fontSize = SaltTheme.textStyles.main.fontSize,
-                color = SaltTheme.colors.text
-            ),
-            cursorBrush = SolidColor(SaltTheme.colors.highlight),
-            decorationBox = { inner ->
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(vertical = 2.dp)
-                ) {
-                    inner()
+                singleLine = true,
+                visualTransformation = if (isPassword) {
+                    PasswordVisualTransformation()
+                } else {
+                    VisualTransformation.None
+                },
+                // 密码项必须声明成密码类型：Android 会把输入框的 inputType 设成
+                // TYPE_TEXT_VARIATION_PASSWORD，系统/ROM 据此弹出「安全键盘」（小米安全键盘、
+                // 华为安全输入等），同时关掉输入法的联想、自动纠错与个性化学习。
+                // 只做 PasswordVisualTransformation（屏幕打码）是不够的：那只是显示层，
+                // 输入法仍然按普通文本框处理。
+                keyboardOptions = KeyboardOptions(
+                    keyboardType = when {
+                        isPassword -> KeyboardType.Password
+                        isInt -> KeyboardType.Number
+                        else -> KeyboardType.Text
+                    },
+                    // 配置项都是账号/地址/密码这类内容，任何联想与自动纠错都是干扰
+                    autoCorrectEnabled = false,
+                    imeAction = ImeAction.Done
+                ),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = SaltTheme.dimens.padding, vertical = 6.dp),
+                textStyle = TextStyle(
+                    fontSize = SaltTheme.textStyles.main.fontSize,
+                    color = SaltTheme.colors.text
+                ),
+                cursorBrush = SolidColor(SaltTheme.colors.highlight),
+                decorationBox = { inner ->
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 2.dp)
+                    ) {
+                        inner()
+                    }
                 }
-            }
-        )
+            )
+        }
         error?.let {
             Text(
                 text = it,
@@ -476,6 +501,7 @@ internal fun PluginConfigEditDialog(
                         onConfirm(trimmed)
                     }
                 },
+                enabled = selectable,
                 text = "保存",
                 modifier = Modifier.weight(1f)
             )
@@ -498,11 +524,24 @@ private fun displayConfigValue(item: PluginConfigItem, values: Map<String, Strin
             ((stored ?: defaultText(item)).toBooleanStrictOrNull() ?: false)
                 .let { if (it) "开" else "关" }
 
+        // select：显示候选值的 name（值不在候选里时原样显示，便于排查）
+        PluginConfigType.SELECT -> {
+            val value = stored?.takeIf { it.isNotBlank() } ?: defaultText(item)
+            when {
+                value.isBlank() -> "未设置"
+                else -> optionName(item, value) ?: value
+            }
+        }
+
         else -> stored?.takeIf { it.isNotBlank() }
             ?: defaultText(item).takeIf { it.isNotBlank() }
             ?: "未设置"
     }
 }
+
+/** 候选值 value → 展示名称；没有对应候选值时返回 null。 */
+private fun optionName(item: PluginConfigItem, value: String): String? =
+    item.options.firstOrNull { it.value == value }?.name?.takeIf { it.isNotBlank() }
 
 /** manifest 里该项的默认值（字符串形式）。 */
 private fun defaultText(item: PluginConfigItem): String =

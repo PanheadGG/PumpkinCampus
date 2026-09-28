@@ -57,10 +57,12 @@ internal fun GlobalScheduleSettingsPage(
         onSettingsChange(settings.copy(defaults = updated))
     }
 
-    val timetableLabel = defaults.timetables
-        .firstOrNull { it.id == defaults.activeTimetableId }
+    // 「全局时间表」至少一张（内置「默认作息」兜底），默认那张一定选得中
+    val normalized = defaults.normalized()
+    val timetableLabel = normalized.timetables
+        .firstOrNull { it.id == normalized.activeTimetableId }
         ?.let { "${it.name} · ${it.slots.size} 节" }
-        ?: if (defaults.timetables.isEmpty()) "内置默认作息" else "未指定（用内置默认作息）"
+        ?: "未指定"
 
     BasicScreen(
         // 返回按钮放最左边（标题左边）

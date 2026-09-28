@@ -36,6 +36,7 @@ import com.pgigi.pumpkincampus.models.CourseSchedule
 import com.pgigi.pumpkincampus.models.DefaultScheduleId
 import com.pgigi.pumpkincampus.models.DefaultScheduleName
 import com.pgigi.pumpkincampus.models.ImportedSchedule
+import com.pgigi.pumpkincampus.models.LessonTimetable
 import com.pgigi.pumpkincampus.models.ScheduleCache
 import com.pgigi.pumpkincampus.models.ScheduleExport
 import com.pgigi.pumpkincampus.plugin.InstalledPlugin
@@ -50,6 +51,7 @@ import com.pgigi.pumpkincampus.plugin.configTypeOf
 import com.pgigi.pumpkincampus.plugin.deletePluginSecrets
 import com.pgigi.pumpkincampus.plugin.loadPluginConfig
 import com.pgigi.pumpkincampus.plugin.migratePlaintextPluginSecrets
+import com.pgigi.pumpkincampus.plugin.readPluginTimetables
 import com.pgigi.pumpkincampus.plugin.runPlugin
 import com.pgigi.pumpkincampus.plugin.savePluginConfig
 import com.pgigi.pumpkincampus.plugin.withAttempt
@@ -400,9 +402,9 @@ internal fun HomeScreen(onColorModeChange: (String) -> Unit = {}) {
                 id = id,
                 name = name.ifBlank { "课表${book.schedules.size + 1}" },
                 courses = emptyList(),
-                // 新建课表取「设置 → 全局课表设置」的默认值快照（默认时间表 / 节数 / 周数 /
-                // 显示替换）；没配过默认值时与内置默认值一致。
-                // 默认时间表会标记来源（fromDefaults），便于在单课表页与本课表自建的区分开。
+                // 新建课表取「设置 → 全局课表设置」的默认值快照（全局时间表 / 节数 / 周数 /
+                // 显示替换）；没配过全局时间表时就是内置的「默认作息」。
+                // 快照会标记来源（fromDefaults），便于区分是建课时带过来的、还是后来复制的。
                 // 之后在该课表的「课表设置」里单独调整，改全局默认值不会再影响它；
                 // 辅助线/课表外观是全局显示项，不用快照
                 settings = settings.defaults.newScheduleSettings()
@@ -721,6 +723,17 @@ internal fun HomeScreen(onColorModeChange: (String) -> Unit = {}) {
         ?.manifest
         ?.configs
         ?: emptyList()
+
+    // 插件推荐时间表：选中插件后直接从它的包内 timetables.json 读（纯数据，不必先同步）
+    var recommendedTimetables by remember { mutableStateOf<List<LessonTimetable>>(emptyList()) }
+    val activePluginId = activeSchedule?.pluginId
+    LaunchedEffect(activePluginId, installedPlugins) {
+        recommendedTimetables = if (activePluginId.isNullOrBlank()) {
+            emptyList()
+        } else {
+            withContext(Dispatchers.Default) { readPluginTimetables(activePluginId) }
+        }
+    }
     // 敏感项（密码等）从 KVault 解密读回后合并，界面上仍然显示「已设置 / ••••••」。
     // 用 remember 缓存：加密存储的读取不必每次重组都做一遍（配置变更时 key 变化会重算）
     val activeConfigValues = remember(
@@ -750,6 +763,7 @@ internal fun HomeScreen(onColorModeChange: (String) -> Unit = {}) {
         installing = pluginInstalling,
         message = pluginMessage,
         pluginCourseCount = pluginCourses.size,
+        recommendedTimetables = recommendedTimetables,
         onInstall = installPlugin,
         onUninstall = uninstallPlugin,
         onDismissMessage = { pluginMessage = null },
@@ -787,6 +801,8 @@ internal fun HomeScreen(onColorModeChange: (String) -> Unit = {}) {
                         activeScheduleId = book.activeScheduleId,
                         // 子标题是否显示课表名称：全局显示开关（不用课表专属设置快照）
                         showScheduleNameInSubtitle = settings.showScheduleNameInSubtitle,
+                        // 「全局时间表」：内置「默认作息」+ 全局课表设置里的默认时间表（只当来源）
+                        globalTimetables = settings.defaults.normalized().timetables,
                         onScheduleSettingsChange = updateScheduleSettings,
                         onSwitchSchedule = switchSchedule,
                         onCreateSchedule = createSchedule,

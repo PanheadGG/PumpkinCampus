@@ -50,12 +50,14 @@ import com.moriafly.salt.ui.icons.ChevronRight
 import com.moriafly.salt.ui.icons.SaltIcons
 import com.moriafly.salt.ui.screen.BasicScreen
 import com.moriafly.salt.ui.screen.TitleBarButton
-import com.pgigi.pumpkincampus.SampleLessonTimes
 import com.pgigi.pumpkincampus.components.AddIcon
 import com.pgigi.pumpkincampus.components.WheelPickerColumn
 import com.pgigi.pumpkincampus.models.AppSettings
 import com.pgigi.pumpkincampus.models.LessonTime
 import com.pgigi.pumpkincampus.models.LessonTimetable
+import com.pgigi.pumpkincampus.models.findTimetableLike
+import com.pgigi.pumpkincampus.models.withCopiedTimetable
+import com.pgigi.pumpkincampus.plugin.PluginTimetableSection
 import com.pgigi.pumpkincampus.schedule.formatClockMinutes
 import com.pgigi.pumpkincampus.schedule.parseClockMinutes
 import kotlin.time.Clock
@@ -73,11 +75,17 @@ internal enum class TimetableScope { Schedule, Defaults }
 
 /**
  * 「上课时间」子页（NavDisplay 推送）：
- * - 内置默认作息 + 候选时间表列表
- * - 点时间表 → [TimetableEditPage] 编辑；点「启用」切换当前作息
+ * - 「全局时间表」（内置「默认作息」+ 设置 → 全局课表设置里的默认时间表）
+ * - 课表页里它只是**来源**：点「使用」复制一份进本课表；默认值页里它就是被编辑的那一份
+ * - 本课表自己的时间表 + 插件推荐时间表（同样是「使用」= 复制一份）
  * - 右上「+」新建时间表（复制当前作息为底稿）
  *
- * @param scope 见 [TimetableScope]：课表专属页会把「默认时间表」与「本课表自建」分开列
+ * @param scope 见 [TimetableScope]：课表专属页把「全局时间表」当来源、把本课表自己的表单列一组
+ * @param pluginSection 「插件推荐时间表」分组数据（来自课表绑定的教务系统插件；
+ *   null = 不显示该分组，例如全局默认值页）
+ * @param onOpenPluginSettings 打开「课表设置 → 教务系统插件」（推荐分组的引导按钮用）
+ * @param globalTimetables 「全局时间表」的来源（`settings.defaults.normalized().timetables`）；
+ *   仅课表专属页需要，默认值页直接编辑 [AppSettings.timetables] 本身
  */
 @OptIn(UnstableSaltUiApi::class, ExperimentalTime::class)
 @Composable
@@ -86,7 +94,10 @@ internal fun LessonTimesPage(
     onSettingsChange: (AppSettings) -> Unit,
     onBack: () -> Unit,
     onOpenTimetable: (String) -> Unit,
-    scope: TimetableScope = TimetableScope.Schedule
+    scope: TimetableScope = TimetableScope.Schedule,
+    pluginSection: PluginTimetableSection? = null,
+    onOpenPluginSettings: (() -> Unit)? = null,
+    globalTimetables: List<LessonTimetable> = emptyList()
 ) {
     var showNewDialog by remember { mutableStateOf(false) }
     val isDefaults = scope == TimetableScope.Defaults
@@ -107,7 +118,7 @@ internal fun LessonTimesPage(
         },
         title = if (isDefaults) "默认上课时间表" else "上课时间",
         subtitle = if (isDefaults) {
-            "新建课表的默认作息"
+            "全局时间表 · 新建课表的默认作息"
         } else {
             "候选时间表 · 多余节次自动忽略"
         },
@@ -131,57 +142,52 @@ internal fun LessonTimesPage(
                 .padding(top = contentPadding.calculateTopPadding())
                 .padding(bottom = contentPadding.calculateBottomPadding() + 24.dp)
         ) {
-            ItemOuterTitle(text = "内置")
-            RoundedColumn {
-                TimetableRow(
-                    name = "默认作息",
-                    slotCount = SampleLessonTimes.size,
-                    active = settings.activeTimetableId == null,
-                    onClick = { onSettingsChange(settings.copy(activeTimetableId = null)) },
-                    onActivate = { onSettingsChange(settings.copy(activeTimetableId = null)) }
-                )
-            }
-
-            // 来自「设置 → 全局课表设置」的默认时间表（新建本课表时快照进来的）
-            val fromDefaults = settings.timetables.filter { it.fromDefaults }
-            val custom = settings.timetables.filterNot { it.fromDefaults }
-
             if (isDefaults) {
+                // 全局默认值页：这一组就是要编辑的「全局时间表」（至少保留一张，见 ScheduleDefaults.normalized）
+                ItemOuterTitle(text = "全局时间表")
+                RoundedColumn {
+                    TimetableRows(
+                        timetables = settings.timetables,
+                        settings = settings,
+                        onSettingsChange = onSettingsChange,
+                        onOpenTimetable = onOpenTimetable,
+                        isDefaults = true
+                    )
+                }
+            } else {
+                // 课表页：「全局时间表」只当来源展示（实时读全局默认值），点「使用」复制一份进本课表
+                if (globalTimetables.isNotEmpty()) {
+                    GlobalTimetableGroup(
+                        timetables = globalTimetables,
+                        settings = settings,
+                        onSettingsChange = onSettingsChange,
+                        onOpenTimetable = onOpenTimetable
+                    )
+                }
+
+                // 本课表自己的时间表：建课时从全局快照来的 + 从全局/插件复制来的 + 自己新建的
                 if (settings.timetables.isNotEmpty()) {
-                    ItemOuterTitle(text = "默认时间表")
+                    ItemOuterTitle(text = "本课表时间表")
                     RoundedColumn {
                         TimetableRows(
                             timetables = settings.timetables,
                             settings = settings,
                             onSettingsChange = onSettingsChange,
-                            onOpenTimetable = onOpenTimetable,
-                            isDefaults = true
-                        )
-                    }
-                }
-            } else {
-                if (fromDefaults.isNotEmpty()) {
-                    ItemOuterTitle(text = "默认时间表（来自全局课表设置）")
-                    RoundedColumn {
-                        TimetableRows(
-                            timetables = fromDefaults,
-                            settings = settings,
-                            onSettingsChange = onSettingsChange,
                             onOpenTimetable = onOpenTimetable
                         )
                     }
                 }
-                if (custom.isNotEmpty()) {
-                    ItemOuterTitle(text = "本课表自定义时间表")
-                    RoundedColumn {
-                        TimetableRows(
-                            timetables = custom,
-                            settings = settings,
-                            onSettingsChange = onSettingsChange,
-                            onOpenTimetable = onOpenTimetable
-                        )
-                    }
-                }
+            }
+
+            // 插件推荐时间表（课表专属；读自插件包内的 timetables.json，不需要先同步）
+            if (!isDefaults && pluginSection != null) {
+                PluginTimetableGroup(
+                    section = pluginSection,
+                    settings = settings,
+                    onSettingsChange = onSettingsChange,
+                    onOpenTimetable = onOpenTimetable,
+                    onOpenPluginSettings = onOpenPluginSettings
+                )
             }
 
             ItemOuterTextButton(
@@ -191,12 +197,13 @@ internal fun LessonTimesPage(
 
             ItemTip(
                 text = if (isDefaults) {
-                    "这里的时间表是**新建课表**时的默认作息（最少保留一张）；" +
-                        "已经建好的课表不会跟着变，要改它们请到课表页「⋯ → 课表设置 → 上课时间」。"
+                    "「全局时间表」是 新建课表 时的默认作息，至少保留一张（内置的「默认作息」也在里面，" +
+                        "改名、改时间、删除都随你）；已经建好的课表不会跟着变，" +
+                        "要改它们请到课表页「⋯ → 课表设置 → 上课时间」。"
                 } else {
-                    "「默认时间表」是新建本课表时从「设置 → 全局课表设置」复制来的，" +
-                        "在这里改名/改时间/删除都只影响本课表；「本课表自定义时间表」是本课表里新建的。" +
-                        "点「启用」切换当前作息，课表只显示「一天课程节数」内的节次。"
+                    "「全局时间表」来自 设置 → 全局课表设置，点「使用」会复制一份进本课表；" +
+                        "「本课表时间表」里的改名/调时间/删除都只影响本课表。" +
+                        "课表只显示「一天课程节数」内的节次。"
                 }
             )
         }
@@ -214,8 +221,8 @@ internal fun LessonTimesPage(
                             name = name,
                             // 复制当前作息作为底稿，之后按需增删节次
                             slots = settings.activeLessonTimes(),
-                            // 默认值页里新建的也是默认时间表；课表里新建的是本课表自建
-                            fromDefaults = isDefaults
+                            // 「全局时间表」里的条目不是快照；课表里新建的也只是本课表自建
+                            fromDefaults = false
                         ),
                         activeTimetableId = id
                     )
@@ -228,10 +235,119 @@ internal fun LessonTimesPage(
     }
 }
 
+/**
+ * 「全局时间表」分组（课表页）：内置「默认作息」+「设置 → 全局课表设置」里的默认时间表。
+ *
+ * 这里只当**来源**（实时读全局默认值，全局那边一改这里就跟着变），
+ * 点「使用」才复制一份进本课表（复制品归本课表所有，之后随便改）；
+ * 同一张表（同名同节次）只会添加一次，已添加的行直接「启用」。
+ */
+@OptIn(UnstableSaltUiApi::class)
+@Composable
+private fun GlobalTimetableGroup(
+    timetables: List<LessonTimetable>,
+    settings: AppSettings,
+    onSettingsChange: (AppSettings) -> Unit,
+    onOpenTimetable: (String) -> Unit
+) {
+    ItemOuterTitle(text = "全局时间表")
+    RoundedColumn {
+        timetables.forEachIndexed { index, source ->
+            val added = settings.findTimetableLike(source)
+            TimetableRow(
+                name = source.name,
+                slotCount = source.slots.size,
+                subtitle = timetableDetail(source, added != null),
+                active = added != null && settings.activeTimetableId == added.id,
+                onClick = {
+                    // 行本身也算「用这张表」：复制后直接进编辑页，方便核对/改名
+                    val updated = settings.withCopiedTimetable(source)
+                    onSettingsChange(updated)
+                    updated.findTimetableLike(source)?.let { onOpenTimetable(it.id) }
+                },
+                onActivate = { onSettingsChange(settings.withCopiedTimetable(source)) },
+                activateLabel = if (added != null) "启用" else "使用"
+            )
+            if (index != timetables.lastIndex) ItemDivider()
+        }
+    }
+    ItemTip(
+        text = "「全局时间表」来自 设置 → 全局课表设置。" +
+            "点「使用」会把它复制成本课表的时间表，之后改名、调时间、删除都只影响本课表。"
+    )
+}
+
+/**
+ * 「插件推荐时间表」分组：插件包 `timetables.json` 里声明的本校作息时间表。
+ *
+ * 只是**推荐**：点「使用」才把它复制成本课表的一张时间表（复制品归本课表所有，
+ * 之后随便改，插件更新也不会覆盖用户改过的表）；同一张表（同名同节次）只会添加一次。
+ */
+@OptIn(UnstableSaltUiApi::class)
+@Composable
+private fun PluginTimetableGroup(
+    section: PluginTimetableSection,
+    settings: AppSettings,
+    onSettingsChange: (AppSettings) -> Unit,
+    onOpenTimetable: (String) -> Unit,
+    onOpenPluginSettings: (() -> Unit)?
+) {
+    val name = section.pluginName ?: "教务系统插件"
+    ItemOuterTitle(text = "插件推荐时间表")
+
+    if (section.timetables.isNotEmpty()) {
+        RoundedColumn {
+            section.timetables.forEachIndexed { index, recommended ->
+                val added = settings.findTimetableLike(recommended)
+                TimetableRow(
+                    name = recommended.name,
+                    slotCount = recommended.slots.size,
+                    subtitle = timetableDetail(recommended, added != null),
+                    active = added != null && settings.activeTimetableId == added.id,
+                    onClick = {
+                        // 行本身也算「用这张表」：应用后直接进编辑页，方便核对/改名
+                        val updated = settings.withCopiedTimetable(recommended)
+                        onSettingsChange(updated)
+                        updated.findTimetableLike(recommended)?.let { onOpenTimetable(it.id) }
+                    },
+                    onActivate = { onSettingsChange(settings.withCopiedTimetable(recommended)) },
+                    activateLabel = if (added != null) "启用" else "使用"
+                )
+                if (index != section.timetables.lastIndex) ItemDivider()
+            }
+        }
+        ItemTip(
+            text = "插件时间表由「$name」推荐。" +
+                "点「使用」会把它复制成本课表的时间表，" +
+                "之后改名、调时间、删除都只影响本课表，插件不会覆盖它。"
+        )
+        return
+    }
+
+    // —— 空态：说明为什么还没有推荐，并给出下一步 ——
+    val (message, needPluginPage) = if (section.pluginMissing) {
+        "绑定的插件已被卸载，请先到「教务系统插件」里重新选择或安装插件。" to true
+    } else {
+        "插件「$name」没有推荐时间表。" +
+            "插件包根目录放一个 `timetables.json` 就能在这里提供本校作息时间，详见插件开发文档。" to false
+    }
+    ItemTip(text = message)
+    if (needPluginPage && onOpenPluginSettings != null) {
+        ItemOuterTextButton(text = "前往教务系统插件", onClick = onOpenPluginSettings)
+    }
+}
+
+/** 来源时间表的副标题：`16 节 · 08:00–21:30`（已复制进本课表再补一句）。 */
+private fun timetableDetail(timetable: LessonTimetable, added: Boolean): String {
+    val first = timetable.slots.firstOrNull()?.start.orEmpty()
+    val last = timetable.slots.lastOrNull()?.end.orEmpty()
+    val range = if (first.isNotEmpty() && last.isNotEmpty()) " · $first–$last" else ""
+    return "${timetable.slots.size} 节$range" + if (added) " · 已添加" else ""
+}
+
 /** 时间表行列表（同一分组内带分隔线）。 */
 @Composable
-private fun TimetableRows(
-    timetables: List<LessonTimetable>,
+private fun TimetableRows(    timetables: List<LessonTimetable>,
     settings: AppSettings,
     onSettingsChange: (AppSettings) -> Unit,
     onOpenTimetable: (String) -> Unit,
@@ -478,7 +594,7 @@ internal fun TimetableEditPage(
             )
             if (!canDelete) {
                 ItemTip(
-                    text = "默认时间表至少要保留一张：先「新建时间表」，再删除这张。"
+                    text = "「全局时间表」至少要保留一张：先「新建时间表」，再删除这张。"
                 )
             }
         }
@@ -524,10 +640,12 @@ internal fun TimetableEditPage(
             onDismissRequest = { confirmDelete = false },
             onConfirm = {
                 confirmDelete = false
+                // 删掉的是当前启用的：顺位启用剩下的一张（全局页只剩最后一张时禁用删除）
+                val remaining = settings.timetables.filterNot { it.id == timetable.id }
                 onSettingsChange(
                     settings.copy(
-                        timetables = settings.timetables.filterNot { it.id == timetable.id },
-                        activeTimetableId = if (active) null
+                        timetables = remaining,
+                        activeTimetableId = if (active) remaining.firstOrNull()?.id
                         else settings.activeTimetableId
                     )
                 )
@@ -554,7 +672,8 @@ private fun TimetableRow(
     onClick: () -> Unit,
     onActivate: () -> Unit,
     activeLabel: String = "✓ 使用中",
-    activateLabel: String = "启用"
+    activateLabel: String = "启用",
+    subtitle: String? = null
 ) {
     Row(
         modifier = Modifier
@@ -572,7 +691,7 @@ private fun TimetableRow(
                 overflow = TextOverflow.Ellipsis
             )
             Text(
-                text = "$slotCount 节",
+                text = subtitle ?: "$slotCount 节",
                 fontSize = SaltTheme.textStyles.sub.fontSize,
                 color = SaltTheme.colors.subText
             )

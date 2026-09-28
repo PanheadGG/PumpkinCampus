@@ -75,6 +75,9 @@
   与用户自己的自定义课程叠加展示在课表 / 日程页
 ```
 
+> 顺带一提：插件包根目录还可以放 `timetables.json` **推荐本校作息时间表**
+> （纯数据、不执行代码、不需要同步，见 [3.1](#31-插件推荐时间表timetablesjson)）。
+
 一次同步里：
 
 1. **新建运行时**并注入全局 API（上次同步的全局状态、`ksoup` 节点、Cookie 罐都不复用）；
@@ -94,6 +97,7 @@
 my-plugin/                     ← 整个目录压成 zip
 ├── manifest.json              # 必需：元数据 + 配置项声明
 ├── index.js                   # 必需：ES Module 入口，必须导出 getCourses
+├── timetables.json            # 可选：推荐本校作息时间表（纯数据，见 3.1）
 ├── utils/                     # 可选：自己的模块，用相对路径 import
 │   ├── client.js
 │   └── schedule.js
@@ -117,6 +121,45 @@ my-plugin/                     ← 整个目录压成 zip
 改 `manifest.json`（`id`/`name`/`schoolName`/`configs`）和 `index.js`（换成你学校的实现），
 然后按 [第 8.8 节](#88-打包与安装) 打包安装。
 
+### 3.1 插件推荐时间表：`timetables.json`
+
+插件包**根目录**放一个 `timetables.json`，就能给用户推荐本校的作息时间表：
+
+```
+课表设置 → 上课时间 → 插件推荐时间表 → 点「使用」
+```
+
+> 同一页的「全局时间表」分组（内置「默认作息」+「设置 → 全局课表设置」里的默认时间表）
+> 用的是**同一套「使用 = 复制一份进本课表」逻辑**，插件推荐表和它并列展示。
+
+```jsonc
+[
+  {
+    "name": "三峡大学作息时间",   // 必填（为空时宿主用「插件推荐时间表 N」）
+    "description": "本部校区",    // 可选，只在日志里出现
+    "slots": [                   // 必填，至少 1 节（也接受别名 periods）
+      { "start": "08:00", "end": "08:45" },
+      { "start": "08:55", "end": "09:40" }
+    ]
+  }
+]
+```
+
+顶层写成数组，或者包一层 `{ "timetables": [ … ] }` 都行。
+
+| 规则 | 行为 |
+| --- | --- |
+| 文件不存在 | 正常，页面提示「插件没有推荐时间表」 |
+| 纯数据 | **不执行任何插件代码**，选中插件后宿主直接读文件，**不需要先同步课表** |
+| `start` / `end` 是 `HH:mm`（`H:mm` 也会补零） | 非法或 `end <= start` 的节次被单独丢弃，其余照常可用 |
+| 最多 5 张表、每张最多 40 节 | 超出截断 |
+| 节次乱序 | 宿主按开始时间升序排好 |
+| 格式整体不对 | 整份忽略（页面按「没有推荐」提示），不会影响插件本身 |
+| 用户点「使用」 | 复制成本课表的一张时间表（`fromDefaults = false`），之后随便改；插件不会覆盖它 |
+
+> 推荐时间表是**建议**不是强制：宿主只负责展示，是否套用完全由用户决定；
+> 同一张表（同名 + 同节次）重复点「使用」不会添加第二张。
+
 ---
 
 ## 4. manifest.json 参考
@@ -135,12 +178,20 @@ my-plugin/                     ← 整个目录压成 zip
   "configs": [
     { "title": "教务系统地址", "key": "base_url", "description": "例如 https://jwxt.example.edu.cn",
       "type": "string", "default": "https://jwxt.example.edu.cn",
-      "options": ["https://jwxt.example.edu.cn", "http://10.0.0.2:8080"] },
+      "options": [
+        { "name": "https://jwxt.example.edu.cn", "value": "https://jwxt.example.edu.cn" },
+        { "name": "http://10.0.0.2:8080", "value": "http://10.0.0.2:8080" }
+      ] },
     { "title": "学号", "key": "username", "type": "string", "default": null },
     { "title": "密码", "key": "password", "type": "password", "default": null },
     { "title": "学期 ID", "key": "term_id", "type": "string", "default": "" },
     { "title": "包含实验课表", "key": "include_experiment", "type": "bool", "default": true },
-    { "title": "验证码重试次数", "key": "captcha_retries", "type": "int", "default": 3 }
+    { "title": "验证码重试次数", "key": "captcha_retries", "type": "int", "default": 3 },
+    { "title": "登录方式", "key": "login_type", "type": "select", "default": "local",
+      "options": [
+        { "name": "本地登录", "value": "local" },
+        { "name": "统一身份认证平台登录", "value": "cas" }
+      ] }
   ]
 }
 ```
@@ -164,7 +215,8 @@ my-plugin/                     ← 整个目录压成 zip
 
 - **允许 `//` 与 `/* */` 注释**（解析前剥离）；别把注释放进字符串值里；
 - 未知字段忽略（`ignoreUnknownKeys`）；
-- `type` 未知值按 `string` 处理；`configs[].options` 不是数组时按空数组处理。
+- `type` 未知值按 `string` 处理；`configs[].options` 不是数组时按空数组处理，
+  数组里不是对象的项按「名称 = 值」兼容（见 [4.2](#42-configs配置项声明)）。
 
 ### 4.2 configs：配置项声明
 
@@ -175,9 +227,9 @@ my-plugin/                     ← 整个目录压成 zip
 | `title` | 配置项标题；**同时作为配置 key**（除非显式给 `key`） |
 | `key` | 显式 key；`ctx.config` 与课表存档都按它存取。**建议显式写**（`title` 是文案，改了会换 key） |
 | `description` | 展示在配置弹层里的说明，可为 null |
-| `type` | `string`（默认）/ `password` / `int` / `bool`（`integer`/`number` → int，`boolean` → bool） |
-| `default` | `null` / 字符串 / 整数 / 布尔；该课表没保存过值时用它 |
-| `options` | 候选值数组，见下 |
+| `type` | `string`（默认）/ `password` / `int` / `bool` / `select`（`integer`/`number` → int，`boolean` → bool，`option`/`enum` → select） |
+| `default` | `null` / 字符串 / 整数 / 布尔；该课表没保存过值时用它。`select` 的默认值应当是某个候选值的 `value` |
+| `options` | 候选值数组（`{ "name": …, "value": … }` 对象），见下 |
 
 类型对应的 UI 与取值：
 
@@ -185,17 +237,30 @@ my-plugin/                     ← 整个目录压成 zip
 - `password`：掩码输入框（`••••••`），值是字符串；**值加密保存**在系统加密存储里
   （KVault：Android Keystore / iOS Keychain），不会明文写进课表存档；
 - `int`：只能输入数字，值是整数（解析不出时为 `0`）；
-- `bool`：开关，值是布尔。
+- `bool`：开关，值是布尔；
+- `select`：**只能从 `options` 里选一个**（配置弹层里没有输入框，选完点「保存」），
+  值是选中项的 `value`；适合「互斥的几种模式」，如登录方式 `local` / `cas`。
 
-**候选值 `options`**：填了以后配置弹层里会出现一排候选按钮，点一下填入，
-**同时仍然允许手动输入**（候选只是建议，宿主不校验）。适合「常见的几个取值 + 允许自定义」：
+**候选值 `options`**：每项是一个对象，`name` 是**展示名称**，`value` 是**实际值**
+（写进课表配置、插件在 `ctx.config` 里拿到的就是它）：
 
 ```json
 { "title": "学期 ID", "key": "term_id", "type": "string", "default": "",
-  "options": ["2024-2025-1", "2024-2025-2", "2025-2026-1", "2025-2026-2"] }
+  "options": [
+    { "name": "2025-2026-1", "value": "2025-2026-1" },
+    { "name": "2025-2026-2", "value": "2025-2026-2" }
+  ] }
 ```
 
-`options` 解析很宽松：字符串/数字/布尔都会转成字符串保留，`null`、对象、数组与空串丢弃。
+- 非 `select` 类型：候选值在配置弹层里排成一排按钮，点一下填入，
+  **同时仍然允许手动输入**（候选只是建议，宿主不校验）——适合「常见取值 + 允许自定义」；
+- `select` 类型：候选值就是**全部可选项**，用户只能点选，不能自己输入；
+- 解析很宽松：对象取 `name` / `value`（缺 `name` 时用 `value` 当展示名，缺 `value` 时名称兼作值）；
+  字符串/数字/布尔按「名称 = 值」处理（早期 `"2024-2025-1"` 这种纯字符串写法仍然可用）；
+  `null`、数组与空串丢弃；整个字段不是数组时按空列表处理。
+
+> `select` 的值由宿主**原样**放进 `ctx.config`（字符串）。插件升级后用户存的旧值可能已不在候选里，
+> 所以插件脚本要对未知值兜底：`plugins/ctgu` 的 `login_type` 就是识别不出时回落默认的「本地登录」。
 
 > **同一个 `configs` 里 key 不要重复**：重复时后面的会覆盖前面的（宿主不做去重校验）。
 
@@ -205,7 +270,7 @@ my-plugin/                     ← 整个目录压成 zip
 
 1. **当前课表保存的值**（用户填的）；
 2. manifest 的 `default`；
-3. 类型零值：`string`/`password` → `""`、`int` → `0`、`bool` → `false`。
+3. 类型零值：`string`/`password`/`select` → `""`、`int` → `0`、`bool` → `false`。
 
 所以 `ctx.config` 里的每个 key **一定存在**，插件不用判 `undefined`，
 只需判空串（例如「学期 ID 留空 = 用教务系统当前学期」）。
@@ -622,6 +687,25 @@ storage.set("session", {
   cookie: mergeCookies(captchaCookie, hop.headers["set-cookie"]),
   savedAt: Date.now()
 });
+
+// D. 前端加密登录（金智 jwapp / 很多新版教务：密码在前端加密后才提交）
+//    做法：把教务系统前端自己的加密脚本一起打进插件包，import 进来直接用——
+//    这样加密结果必然被服务器接受，也不用自己移植算法。
+//    （plugins/JinZhi 就是这么做的：utils/des.js 就是站点原版 des.js，
+//      只在文件末尾补了 `export const strEnc = globalThis.DES.strEnc;` 之类的导出）
+import { strEnc, strEncSimple } from "./utils/des.js";
+const token = randomToken(36);                 // 随机 36 位数字+小写字母
+const login3 = await http.request({
+  url: base + "/jwapp/sys/yjsrzfwapp/dbLogin/doDbLogin.do",
+  method: "POST",
+  headers: { Cookie: "GS_DBLOGIN_TOKEN=" + token },   // 加密用的 token 放进 Cookie
+  body: buildMultipartBody([
+    ["userId", strEncSimple(user)],
+    ["password", strEnc(pass, token, user, "")]
+  ], boundary),                                       // 宿主没有 multipart 帮手：自己拼边界
+  contentType: "multipart/form-data; boundary=" + boundary
+});
+// 提示：字符串 body 可以配任意 content-type（宿主按 UTF-8 编码发送）
 ```
 
 ### 8.3 拉数据
@@ -716,10 +800,12 @@ console.log("解析出 " + courses.length + " 门课程");
 | 插件 | 特点 | 适合参考 |
 | --- | --- | --- |
 | [plugins/QiangZhi/](../plugins/QiangZhi/) | 强智教务**通用版**：地址必须由用户填写，脚本检测空地址并提示；粘贴课表页地址会自动归一化 | 通用插件的做法（不给学校默认值、`configs[].default = null` + 脚本检测）、地址归一化、验证码登录 |
+| [plugins/JinZhi/](../plugins/JinZhi/) | 金智教育 **jwapp 通用版**（以三峡大学为例）：`portal/index.do` 探测 302 → DES 加密登录（前端 `des.js`）→ 解锁课表权限 → 当前学期 → JSON 课表 | 探测式登录态判断、**把教务前端自己的加密脚本当模块 import**、multipart 表单、Cookie 跨同步复用、位图周次（`SKZC`）解析 |
 | [plugins/usc/](../plugins/usc/) | 南华大学教务 jsxsd：验证码登录 + Cookie 复用 + 学生课表/实验课表合并 | 表单登录、手动跟跳 302、HTML 表格解析、会话缓存 |
 | [plugins/nggjx-schedule/](../plugins/nggjx-schedule/) | 自建 JSON 接口：POST 登录 + JSON 课表 | JSON 接口、`weeks` 1 基写法 |
 
-三者都在同目录提供了可直接安装的 zip（`QiangZhi.zip` / `usc.zip` / `nggjx-schedule.zip`）。
+四者都在同目录提供了可直接安装的 zip
+（`QiangZhi.zip` / `JinZhi.zip` / `usc.zip` / `nggjx-schedule.zip`）。
 
 ### 8.8 打包与安装
 
@@ -848,6 +934,22 @@ macOS / Linux：`zip -r my-plugin.zip my-plugin`。
   KV 数据；
 - 兼容读取：早期版本分享的信封里单独的 `pluginCourses` 字段仍会被读出并并入课程。
 
+### 10.5 推荐时间表怎么到用户手里
+
+插件包里的 `timetables.json`（见 [3.1](#31-插件推荐时间表timetablesjson)）会在用户**选中该插件**后
+被宿主读出来，出现在「课表页 ⋯ → 课表设置 → 上课时间 → **插件推荐时间表**」：
+
+| 用户看到 | 含义 |
+| --- | --- |
+| 一行推荐表（`N 节 · 08:00–21:30`） | 点「使用」复制成本课表的时间表并启用；之后按需要改 |
+| 「已添加」 | 本课表已有同名同节次的表，点「启用」直接切过去，不会重复添加 |
+| 「插件没有推荐时间表」 | 包内没有 `timetables.json`，或文件内容没解析出可用的表 |
+| 整组不出现 | 该课表没绑定插件（全局默认设置页里也不显示这一组） |
+| 「全局时间表」分组 | 同一页的另一个来源分组（内置「默认作息」+ 全局课表设置里的默认时间表），「使用 / 已添加 / 启用」的含义与插件推荐完全一致 |
+
+复制出来的时间表**完全归用户**：改名、调节次、删除都只影响本课表；插件升级/重装
+不会改动它（`timetables.json` 变了也只是重新出现一行新的推荐）。
+
 ---
 
 ## 11. 限制与安全
@@ -891,7 +993,7 @@ macOS / Linux：`zip -r my-plugin.zip my-plugin`。
 ## 12. 常见问题
 
 **Q：一个插件能适配多个学校吗？**
-可以。把地址、路径做成 `configs`（配合 `options` 给候选值），
+可以。把地址、路径做成 `configs`（配合 `options` 给候选值、用 `select` 限制只能选），
 或者按 `ctx.config` 分支走不同实现；`id` 保持一个即可。
 
 **Q：一个课表能同时用两个插件吗（比如本科课表 + 实验课表）？**
@@ -903,6 +1005,11 @@ macOS / Linux：`zip -r my-plugin.zip my-plugin`。
 
 **Q：能改课表里的课程吗（改名、改时间）？**
 不能。插件课程是只读层，用户只能「转换为自定义课程」后在 App 里改。
+
+**Q：能改用户的时间表（作息时间）吗？**
+不能自动改。插件只能在包内放 `timetables.json` **推荐**作息时间（见
+[3.1](#31-插件推荐时间表timetablesjson)），用户点「使用」才会复制一张成本课表；
+复制出来的表归用户，插件改文件也不会动它。
 
 **Q：插件能读别的课表的数据吗？**
 不能。`ctx.schedule` 只有当前课表的 id 与名称，`storage` 也只在当前课表维度可读写。
@@ -995,7 +1102,23 @@ export async function getCourses(ctx) {
 }
 ```
 
-把这两个文件（以及可选的 `utils/`、`README.md`）压成 zip 安装即可。
+把这两个文件（以及可选的 `utils/`、`README.md`、`timetables.json`）压成 zip 安装即可。
+
+**timetables.json**（可选，推荐本校作息时间，见 [3.1](#31-插件推荐时间表timetablesjson)）
+
+```json
+[
+  {
+    "name": "示例大学作息时间",
+    "slots": [
+      { "start": "08:00", "end": "08:45" },
+      { "start": "08:55", "end": "09:40" },
+      { "start": "10:00", "end": "10:45" },
+      { "start": "10:55", "end": "11:40" }
+    ]
+  }
+]
+```
 
 ---
 

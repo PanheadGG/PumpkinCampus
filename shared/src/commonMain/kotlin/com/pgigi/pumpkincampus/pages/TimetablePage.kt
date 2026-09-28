@@ -57,6 +57,7 @@ import com.pgigi.pumpkincampus.models.AppSettings
 import com.pgigi.pumpkincampus.models.Course
 import com.pgigi.pumpkincampus.models.CourseSchedule
 import com.pgigi.pumpkincampus.models.ImportedSchedule
+import com.pgigi.pumpkincampus.models.LessonTimetable
 import com.pgigi.pumpkincampus.plugin.PluginUiState
 import com.pgigi.pumpkincampus.schedule.AddCourseSheet
 import com.pgigi.pumpkincampus.schedule.EditCourseSheet
@@ -181,6 +182,7 @@ internal fun TimetablePage(
     onConvertPluginCourse: (Course) -> Unit = {},
     pluginUi: PluginUiState? = null,
     showScheduleNameInSubtitle: Boolean = true,
+    globalTimetables: List<LessonTimetable> = emptyList(),
     pluginRefreshing: Boolean = false,
     onRefreshPluginCourses: () -> Unit = {}
 ) {
@@ -290,7 +292,12 @@ internal fun TimetablePage(
                     settings = settings,
                     onSettingsChange = onScheduleSettingsChange,
                     onBack = { pop() },
-                    onOpenTimetable = { push(TimetableLessonEditKey(it)) }
+                    onOpenTimetable = { push(TimetableLessonEditKey(it)) },
+                    // 全局时间表（内置「默认作息」+ 设置 → 全局课表设置里的默认时间表）：只当来源
+                    globalTimetables = globalTimetables,
+                    // 插件推荐时间表（读自插件包内的 timetables.json）
+                    pluginSection = pluginUi?.timetableSection,
+                    onOpenPluginSettings = { push(SchedulePluginKey) }
                 )
             }
             entry<TimetableLessonEditKey> { key ->

@@ -33,19 +33,23 @@ data class PluginConfigItem(
     val key: String? = null,
     /** 配置项描述，可为 null；展示在配置编辑弹层里。 */
     val description: String? = null,
-    /** 取值类型：`string` / `password` / `int` / `bool`（其他值按 `string` 处理）。 */
+    /** 取值类型：`string` / `password` / `int` / `bool` / `select`（其他值按 `string` 处理）。 */
     val type: String = "string",
     /** 默认值：null / 字符串 / 整数 / 布尔；课表未保存过该配置时使用。 */
     val default: JsonElement? = null,
     /**
-     * 候选值列表（可选）。非空时配置弹层里会把这些值列成一排候选按钮：
-     * 点一下即填入，**同时仍然可以自己手动输入**（候选只是建议，不做校验）。
+     * 候选值列表（可选）。非空时配置弹层里会把这些值列成一排候选按钮。
      *
-     * 解析很宽松：数组里的字符串/数字/布尔都会转成字符串保留，
-     * 对象与数组项忽略，整个字段不是数组时按空列表处理。
+     * - `type: "select"`（别名 `option`）：**只能从候选值里选**，配置项不提供输入框，
+     *   值是 [PluginConfigOption.value]；
+     * - 其他类型：候选只是建议，点一下填入，**仍然可以自己手动输入**（宿主不校验）。
+     *
+     * 解析很宽松：对象取 `name` / `value`（缺 `name` 时用 `value` 当名称；
+     * 字符串/数字/布尔按「名称 = 值」处理——兼容早期的纯字符串写法）；
+     * `null`、数组与空值丢弃，整个字段不是数组时按空列表处理。
      */
     @Serializable(with = OptionListSerializer::class)
-    val options: List<String> = emptyList()
+    val options: List<PluginConfigOption> = emptyList()
 ) {
     /** 该配置项实际使用的 key（[key] 优先，缺省回落 [title]）。 */
     val configKey: String
@@ -57,32 +61,71 @@ data class PluginConfigItem(
 }
 
 /**
+ * `configs[].options` 里的一项候选值。
+ *
+ * @property name 展示名称（配置弹层里用户看到的文案）
+ * @property value **实际值**：写进课表配置，插件在 `ctx.config` 里拿到的就是它
+ */
+@Serializable
+data class PluginConfigOption(
+    val name: String = "",
+    val value: String = ""
+)
+
+/**
  * `configs[].options` 的宽松解析器。
  *
- * 候选值本意是字符串数组，但插件作者可能写成数字（如年份）或混入 null，
- * 这里统一取 `JsonPrimitive` 的内容并丢弃空串；字段不是数组时按空列表处理，
- * 避免一处小笔误让整个 manifest 解析失败。
+ * 规范写法是 `{ "name": "本地登录", "value": "local" }` 对象数组，但为了兼容与容错：
+ *
+ * - 对象：取 `name` / `value`；缺 `name` 时用 `value` 当名称，`value` 为空则丢弃；
+ * - 字符串/数字/布尔：按「名称 = 值」处理（早期写法 `"2024-2025-1"` 仍然可用）；
+ * - `null`、数组、空白串丢弃；整个字段不是数组时按空列表处理；
+ * - 字段有笔误时不会让整个 manifest 解析失败。
  */
-private object OptionListSerializer : KSerializer<List<String>> {
-    private val delegate = ListSerializer(String.serializer())
+private object OptionListSerializer : KSerializer<List<PluginConfigOption>> {
+    private val delegate = ListSerializer(PluginConfigOption.serializer())
 
     override val descriptor: SerialDescriptor = delegate.descriptor
 
-    override fun deserialize(decoder: Decoder): List<String> {
+    override fun deserialize(decoder: Decoder): List<PluginConfigOption> {
         val input = decoder as? JsonDecoder ?: return emptyList()
         val array = input.decodeJsonElement() as? JsonArray ?: return emptyList()
-        return array.mapNotNull { element ->
-            (element as? JsonPrimitive)?.contentOrNullSafely()?.takeIf { it.isNotBlank() }
+        return array.mapNotNull { element -> element.toConfigOption() }
+    }
+
+    override fun serialize(encoder: Encoder, value: List<PluginConfigOption>) =
+        delegate.serialize(encoder, value)
+}
+
+/** 单个候选值元素 → [PluginConfigOption]；无法解析时返回 null（丢弃该项）。 */
+private fun JsonElement.toConfigOption(): PluginConfigOption? = when (this) {
+    is JsonObject -> {
+        val value = (this["value"] as? JsonPrimitive)?.contentOrNullSafely()?.trim().orEmpty()
+        val name = (this["name"] as? JsonPrimitive)?.contentOrNullSafely()?.trim().orEmpty()
+        when {
+            value.isNotEmpty() -> PluginConfigOption(name.ifEmpty { value }, value)
+            // 只写了 name：把它当成值（name 与 value 相同，至少不会丢配置项）
+            name.isNotEmpty() -> PluginConfigOption(name, name)
+            else -> null
         }
     }
 
-    override fun serialize(encoder: Encoder, value: List<String>) =
-        delegate.serialize(encoder, value)
+    is JsonPrimitive ->
+        contentOrNullSafely()?.trim()?.takeIf { it.isNotEmpty() }
+            ?.let { PluginConfigOption(it, it) }
+
+    else -> null // null / 数组：丢弃
 }
 
 /** manifest `configs[].type` 的规范化枚举。 */
 enum class PluginConfigType {
-    STRING, PASSWORD, INT, BOOL;
+    STRING, PASSWORD, INT, BOOL,
+
+    /**
+     * 只能从 `options` 里选一个（值为 `PluginConfigOption.value`），
+     * 配置弹层**不提供输入框**。
+     */
+    SELECT;
 
     companion object {
         /** 解析 manifest 里的 type 字符串；未知值一律按 [STRING] 处理（宽松前向兼容）。 */
@@ -90,6 +133,7 @@ enum class PluginConfigType {
             "password" -> PASSWORD
             "int", "integer", "number" -> INT
             "bool", "boolean" -> BOOL
+            "select", "option", "options", "enum" -> SELECT
             else -> STRING
         }
     }
@@ -213,7 +257,7 @@ fun validatePluginManifest(manifest: PluginManifest): String? = when {
  * 3. 都没有时按类型给零值（`""` / `0` / `false`）。
  *
  * 输出按 [PluginConfigItem.configType] 转成 JSON 原生类型：
- * `string`/`password` → 字符串，`int` → 整数，`bool` → 布尔。
+ * `string`/`password`/`select` → 字符串（`select` 取候选值的 `value`），`int` → 整数，`bool` → 布尔。
  */
 fun buildPluginConfigJson(
     configs: List<PluginConfigItem>,
@@ -239,6 +283,7 @@ fun buildPluginConfigJson(
                         ?: false
                 )
 
+                // STRING / PASSWORD / SELECT：值都是字符串（SELECT 存的是候选值的 value）
                 else -> JsonPrimitive(
                     saved ?: (def as? JsonPrimitive)?.contentOrNullSafely() ?: ""
                 )
