@@ -22,8 +22,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
+import androidx.navigation3.runtime.NavEntryDecorator
 import androidx.navigation3.runtime.NavKey
 import androidx.navigation3.runtime.entryProvider
+import androidx.navigation3.runtime.rememberSaveableStateHolderNavEntryDecorator
 import androidx.navigation3.ui.NavDisplay
 import androidx.navigation3.ui.defaultTransitionSpec
 import androidx.savedstate.serialization.SavedStateConfiguration
@@ -894,6 +896,11 @@ internal fun HomeScreen(onColorModeChange: (String) -> Unit = {}) {
             backStack = navigator.navBackStack,
             modifier = Modifier.fillMaxSize(),
             onBack = { navigator.back() },
+            // 保存态（默认项）+ 每个场景一层不透明页面背景，见 rememberSceneBackgroundDecorator
+            entryDecorators = listOf(
+                rememberSaveableStateHolderNavEntryDecorator(),
+                rememberSceneBackgroundDecorator()
+            ),
             // 前进转场分两种：
             // - 目标是 tab 根（`previousEntries` 为空 = 栈深 1）→ **切 tab**，
             //   沿用原来底栏切换的 250ms 淡出淡入（Crossfade 的观感）；
@@ -1185,6 +1192,35 @@ internal fun HomeScreen(onColorModeChange: (String) -> Unit = {}) {
         )
     }
 }
+
+/**
+ * 给**每个场景**（每个 NavEntry 的内容）铺一层不透明的页面背景色。
+ *
+ * 页面本身（Salt 的 [com.moriafly.salt.ui.screen.BasicScreen]）是**透明的**，只负责排版、
+ * 不画底色，过去靠最外层 App 根容器垫底色。进入导航栈动画后这就不够了：
+ * iOS 默认前进转场会把旧场景向左滑出 1/4 屏并 veilOut 蒙灰，新场景又透明 ——
+ * 于是「旧场景已经让开、新场景没画底色」的那块就露出最底层的 App 底色，
+ * 表现成右侧一条硬边白块、旧页面内容还透在新页面里（切换时背景异常）。
+ *
+ * 铺上这层背景后：新场景滑到哪，页面背景就铺到哪，旧场景被新场景完全盖住，
+ * 与原生 iOS 推入的观感一致；静止时该颜色与 App 根容器底色相同，看不出任何变化。
+ *
+ * 用 [NavEntryDecorator] 实现：它正好是 navigation3 提供的「给 entry 内容包一层」的钩子，
+ * 一处覆盖全部 14 个路由，新增路由也自动带上。
+ */
+@Composable
+private fun rememberSceneBackgroundDecorator(): NavEntryDecorator<NavKey> =
+    remember {
+        NavEntryDecorator<NavKey> { entry ->
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(SaltTheme.colors.background)
+            ) {
+                entry.Content()
+            }
+        }
+    }
 
 /**
  * tab 根场景的外壳：内容区 + 顶部分隔线 + 底部 [BottomBar]。
