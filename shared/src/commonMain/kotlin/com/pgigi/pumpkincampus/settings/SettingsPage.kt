@@ -1,9 +1,5 @@
 package com.pgigi.pumpkincampus.settings
 
-import androidx.compose.animation.ContentTransform
-import androidx.compose.animation.core.tween
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -37,9 +33,6 @@ import androidx.compose.ui.unit.DpOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.navigation3.runtime.NavKey
-import androidx.navigation3.runtime.entryProvider
-import androidx.navigation3.ui.NavDisplay
-import androidx.savedstate.serialization.SavedStateConfiguration
 import com.moriafly.salt.ui.Button
 import com.moriafly.salt.ui.ButtonAppearance
 import com.moriafly.salt.ui.Icon
@@ -54,7 +47,6 @@ import com.moriafly.salt.ui.dialog.BasicDialog
 import com.moriafly.salt.ui.dialog.DialogTitle
 import com.moriafly.salt.ui.icons.ChevronRight
 import com.moriafly.salt.ui.icons.SaltIcons
-import com.moriafly.salt.ui.navigation.rememberSaltNavigator
 import com.moriafly.salt.ui.popup.PopupMenu
 import com.moriafly.salt.ui.popup.PopupMenuItem
 import com.moriafly.salt.ui.screen.BasicScreen
@@ -64,7 +56,6 @@ import com.pgigi.pumpkincampus.models.Course
 import com.pgigi.pumpkincampus.models.ImportedSchedule
 import com.pgigi.pumpkincampus.models.OssLicense
 import com.pgigi.pumpkincampus.models.ScheduleCache
-import com.pgigi.pumpkincampus.models.ScheduleDefaults
 import com.pgigi.pumpkincampus.models.ScheduleExport
 import com.pgigi.pumpkincampus.plugin.PluginUiState
 import com.pgigi.pumpkincampus.schedule.ImportErrorDialog
@@ -76,27 +67,10 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
-import kotlinx.serialization.modules.SerializersModule
-import kotlinx.serialization.modules.polymorphic
-import kotlinx.serialization.modules.subclass
 import kotlin.math.roundToInt
 
 internal val SettingsWeekLabels = listOf("日", "一", "二", "三", "四", "五", "六")
 
-/**
- * 设置页：
- * - 导入课程（Popup 选择：从JSON文本导入 / 从文件导入，与课表页一致）
- * - **全局显示项**：颜色模式、子标题课表名、辅助线、课表外观（所有课表共用）
- * - **全局课表设置**：上课时间表、一天课程节数、学期周数、显示替换——
- *   只作为**新建课表**的默认值，改它不影响已建立的课表；导入/分享按信封自带的课表配置来
- * - 教务系统插件（全局安装/卸载）
- *
- * 「第一周的第一天」「上课时间」「一天课程节数」「学期周数」「显示替换」在**单个课表**里
- * 各自维护，在课表页「⋯ → 课表设置」里调整，只对当前课表生效。
- *
- * 子页统一由 salt-ui-navigation（[rememberSaltNavigator] + [NavDisplay]）推送。
- * 设置经 [onSettingsChange] 交由 HomeScreen 持久化到 settings.json。
- */
 /** 设置页根导航键。 */
 @Serializable
 internal data object SettingsRootKey : NavKey
@@ -134,141 +108,25 @@ internal data object OssLicenseListKey : NavKey
 internal data class OssLicenseDetailKey(val license: OssLicense) : NavKey
 
 /**
- * 设置页导航宿主：子页统一用 Salt UI 的 **salt-ui-navigation**（navigation3）——
- * [rememberSaltNavigator] 持有可保存的导航栈，[NavDisplay] 负责渲染与转场，
- * 课表外观、上课时间、时间表编辑都压入同一栈，返回箭头/系统返回键弹栈。
+ * 设置页：
+ * - 导入课程（Popup 选择：从JSON文本导入 / 从文件导入，与课表页一致）
+ * - **全局显示项**：颜色模式、子标题课表名、辅助线、课表外观（所有课表共用）
+ * - **全局课表设置**：上课时间表、一天课程节数、学期周数、显示替换——
+ *   只作为**新建课表**的默认值，改它不影响已建立的课表；导入/分享按信封自带的课表配置来
+ * - 教务系统插件（全局安装/卸载）
+ *
+ * 「第一周的第一天」「上课时间」「一天课程节数」「学期周数」「显示替换」在**单个课表**里
+ * 各自维护，在课表页「⋯ → 课表设置」里调整，只对当前课表生效。
+ *
+ * **子页不在本页建栈**：课表外观、全局课表设置、上课时间、时间表编辑、教务系统插件、
+ * 关于、开源许可等子页统一压入 [com.pgigi.pumpkincampus.pages.HomeScreen] 里的
+ * **唯一全局导航栈**（一个 SaltNavigator + 一个 NavDisplay），本页只回调 [onNavigate]；
+ * 返回箭头 / 系统返回键 / 侧滑返回也都作用于那条全局栈。
+ * 设置经 [onSettingsChange] 交由 HomeScreen 持久化到 settings.json。
  */
 @OptIn(UnstableSaltUiApi::class)
 @Composable
 internal fun SettingsPage(
-    settings: AppSettings,
-    courses: List<Course>,
-    onSettingsChange: (AppSettings) -> Unit,
-    onImportReady: (ImportedSchedule) -> Unit,
-    pluginUi: PluginUiState? = null
-) {
-    // salt-ui-navigation：可保存的导航栈（根 = 设置主页；子页 navigate 压栈、back 弹栈）
-    val navigator = rememberSaltNavigator(
-        configuration = SavedStateConfiguration {
-            serializersModule = SerializersModule {
-                polymorphic(baseClass = NavKey::class) {
-                    subclass(serializer = SettingsRootKey.serializer())
-                    subclass(serializer = AppearanceKey.serializer())
-                    subclass(serializer = GlobalScheduleSettingsKey.serializer())
-                    subclass(serializer = DefaultLessonTimesKey.serializer())
-                    subclass(serializer = DefaultTimetableEditKey.serializer())
-                    subclass(serializer = PluginsKey.serializer())
-                    subclass(serializer = AboutKey.serializer())
-                    subclass(serializer = OssLicenseListKey.serializer())
-                    subclass(serializer = OssLicenseDetailKey.serializer())
-                }
-            }
-        },
-        initRoute = SettingsRootKey,
-        topLevelRoutes = setOf(SettingsRootKey)
-    )
-
-    NavDisplay(
-        backStack = navigator.navBackStack,
-        modifier = Modifier.fillMaxSize(),
-        onBack = { navigator.back() },
-        // 关掉返回预测动画：滑动返回跟手时不再把当前页缩小到 0.7 倍做预览，
-        // 改为与普通返回（pop）一致的淡入淡出过渡
-        predictivePopTransitionSpec = { _ ->
-            ContentTransform(
-                fadeIn(animationSpec = tween(700)),
-                fadeOut(animationSpec = tween(700))
-            )
-        },
-        entryProvider = entryProvider {
-            entry<SettingsRootKey> {
-                MainSettings(
-                    settings = settings,
-                    onSettingsChange = onSettingsChange,
-                    onImportReady = onImportReady,
-                    pluginUi = pluginUi,
-                    onNavigate = { navigator.navigate(it) }
-                )
-            }
-            entry<PluginsKey> {
-                PluginsPage(
-                    pluginUi = pluginUi,
-                    onBack = { navigator.back() }
-                )
-            }
-            entry<AppearanceKey> {
-                AppearanceSettingsPage(
-                    settings = settings,
-                    courses = courses,
-                    onSettingsChange = onSettingsChange,
-                    onBack = { navigator.back() }
-                )
-            }
-            // —— 全局课表设置：新建课表的默认值（不影响已建立的课表） ——
-            entry<GlobalScheduleSettingsKey> {
-                GlobalScheduleSettingsPage(
-                    settings = settings,
-                    onSettingsChange = onSettingsChange,
-                    onOpenLessonTimes = { navigator.navigate(DefaultLessonTimesKey) },
-                    onBack = { navigator.back() }
-                )
-            }
-            entry<DefaultLessonTimesKey> {
-                // 用 ScheduleDefaults 的「可编辑视图」复用同一套时间表页面，
-                // 改完再取回课表专属字段写进全局默认值
-                LessonTimesPage(
-                    settings = settings.defaults.asEditableSettings(),
-                    onSettingsChange = { updated ->
-                        onSettingsChange(
-                            settings.copy(defaults = ScheduleDefaults.from(updated))
-                        )
-                    },
-                    onBack = { navigator.back() },
-                    onOpenTimetable = { id ->
-                        navigator.navigate(DefaultTimetableEditKey(id))
-                    },
-                    scope = TimetableScope.Defaults
-                )
-            }
-            entry<DefaultTimetableEditKey> { key ->
-                TimetableEditPage(
-                    timetableId = key.timetableId,
-                    settings = settings.defaults.asEditableSettings(),
-                    onSettingsChange = { updated ->
-                        onSettingsChange(
-                            settings.copy(defaults = ScheduleDefaults.from(updated))
-                        )
-                    },
-                    onBack = { navigator.back() },
-                    // 全局时间表最少保留一张
-                    canDelete = settings.defaults.normalized().timetables.size > 1
-                )
-            }
-            entry<AboutKey> {
-                AboutPage(
-                    onBack = { navigator.back() },
-                    onOpenLicenses = { navigator.navigate(OssLicenseListKey) }
-                )
-            }
-            entry<OssLicenseListKey> {
-                OssLicenseListPage(
-                    onBack = { navigator.back() },
-                    onOpen = { navigator.navigate(OssLicenseDetailKey(it)) }
-                )
-            }
-            entry<OssLicenseDetailKey> { key ->
-                OssLicenseDetailPage(
-                    license = key.license,
-                    onBack = { navigator.back() }
-                )
-            }
-        }
-    )
-}
-
-@OptIn(UnstableSaltUiApi::class)
-@Composable
-private fun MainSettings(
     settings: AppSettings,
     onSettingsChange: (AppSettings) -> Unit,
     onImportReady: (ImportedSchedule) -> Unit,

@@ -48,10 +48,21 @@ import com.pgigi.pumpkincampus.schedule.dayIndexOf
 import com.pgigi.pumpkincampus.schedule.formatClockMinutes
 import com.pgigi.pumpkincampus.schedule.parseClockMinutes
 import com.pgigi.pumpkincampus.schedule.weekCalculatorOf
+import androidx.navigation3.runtime.NavKey
 import kotlinx.datetime.DateTimeUnit
 import kotlinx.datetime.LocalDate
 import kotlinx.datetime.number
 import kotlinx.datetime.plus
+import kotlinx.serialization.Serializable
+
+/**
+ * 日程页根导航键（**全局导航**的 tab 根之一，另两个是 [TimetableRootKey] / `SettingsRootKey`）。
+ *
+ * 三个 tab 根是 `HomeScreen` 里唯一 [com.moriafly.salt.ui.navigation.SaltNavigator]
+ * 的 `topLevelRoutes`：点底栏 = `navigate(根键)`，整条返回栈收敛回该 tab 根。
+ */
+@Serializable
+internal data object AgendaRootKey : NavKey
 
 /** 卡片左右分隔的红色竖线颜色。 */
 private val AgendaAccentLine = Color(0xFFE53935)

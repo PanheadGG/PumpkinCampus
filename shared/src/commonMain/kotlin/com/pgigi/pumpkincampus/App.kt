@@ -56,7 +56,8 @@ fun App(onDarkThemeChange: ((Boolean) -> Unit)? = null) {
                 .fillMaxSize()
                 .background(SaltTheme.colors.background)
         ) {
-            // 主页：底部 BottomBar 切换「日程 / 课表」，页面间淡出淡入（不使用 Pager）
+            // 主页外壳 = 全局导航宿主：一条导航栈 + 底部 BottomBar 切「日程 / 课表 / 设置」，
+            // 子页压在这条栈上（全屏、无底栏），页面间淡出淡入（不使用 Pager）
             HomeScreen(onColorModeChange = { colorMode = it })
         }
     }

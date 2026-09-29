@@ -1,7 +1,9 @@
 package com.pgigi.pumpkincampus.pages
 
-import androidx.compose.animation.Crossfade
+import androidx.compose.animation.ContentTransform
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -15,16 +17,21 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
+import androidx.navigation3.runtime.NavKey
+import androidx.navigation3.runtime.entryProvider
+import androidx.navigation3.ui.NavDisplay
+import androidx.navigation3.ui.defaultTransitionSpec
+import androidx.savedstate.serialization.SavedStateConfiguration
 import com.moriafly.salt.ui.BottomBar
 import com.moriafly.salt.ui.BottomBarItem
 import com.moriafly.salt.ui.SaltTheme
 import com.moriafly.salt.ui.UnstableSaltUiApi
+import com.moriafly.salt.ui.navigation.rememberSaltNavigator
 import com.pgigi.pumpkincampus.components.AgendaIcon
 import com.pgigi.pumpkincampus.components.SettingsIcon
 import com.pgigi.pumpkincampus.components.TimetableIcon
@@ -38,6 +45,7 @@ import com.pgigi.pumpkincampus.models.DefaultScheduleName
 import com.pgigi.pumpkincampus.models.ImportedSchedule
 import com.pgigi.pumpkincampus.models.LessonTimetable
 import com.pgigi.pumpkincampus.models.ScheduleCache
+import com.pgigi.pumpkincampus.models.ScheduleDefaults
 import com.pgigi.pumpkincampus.models.ScheduleExport
 import com.pgigi.pumpkincampus.plugin.InstalledPlugin
 import com.pgigi.pumpkincampus.plugin.PluginManager
@@ -61,8 +69,28 @@ import com.pgigi.pumpkincampus.schedule.ImportErrorDialog
 import com.pgigi.pumpkincampus.schedule.ScheduleNameDialog
 import com.pgigi.pumpkincampus.schedule.dayIndexOf
 import com.pgigi.pumpkincampus.schedule.weekCalculatorOf
+import com.pgigi.pumpkincampus.settings.AboutKey
+import com.pgigi.pumpkincampus.settings.AboutPage
+import com.pgigi.pumpkincampus.settings.AppearanceKey
+import com.pgigi.pumpkincampus.settings.AppearanceSettingsPage
 import com.pgigi.pumpkincampus.settings.DatePickerDialog
+import com.pgigi.pumpkincampus.settings.DefaultLessonTimesKey
+import com.pgigi.pumpkincampus.settings.DefaultTimetableEditKey
+import com.pgigi.pumpkincampus.settings.GlobalScheduleSettingsKey
+import com.pgigi.pumpkincampus.settings.GlobalScheduleSettingsPage
+import com.pgigi.pumpkincampus.settings.LessonTimesPage
+import com.pgigi.pumpkincampus.settings.OssLicenseDetailKey
+import com.pgigi.pumpkincampus.settings.OssLicenseDetailPage
+import com.pgigi.pumpkincampus.settings.OssLicenseListKey
+import com.pgigi.pumpkincampus.settings.OssLicenseListPage
+import com.pgigi.pumpkincampus.settings.PluginsKey
+import com.pgigi.pumpkincampus.settings.PluginsPage
+import com.pgigi.pumpkincampus.settings.SchedulePluginPage
+import com.pgigi.pumpkincampus.settings.ScheduleSettingsPage
 import com.pgigi.pumpkincampus.settings.SettingsPage
+import com.pgigi.pumpkincampus.settings.SettingsRootKey
+import com.pgigi.pumpkincampus.settings.TimetableEditPage
+import com.pgigi.pumpkincampus.settings.TimetableScope
 import com.pgigi.pumpkincampus.utils.FileStoreUtils
 import com.pgigi.pumpkincampus.utils.JsonUtil
 import com.pgigi.pumpkincampus.utils.WidgetDataHelper
@@ -79,16 +107,25 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.modules.SerializersModule
+import kotlinx.serialization.modules.polymorphic
+import kotlinx.serialization.modules.subclass
 import kotlin.time.Clock
 import kotlin.time.ExperimentalTime
 
 /**
- * 主页外壳：底部 [BottomBar] 选择页面，内容区用 [Crossfade] 淡出淡入切换。
+ * 主页外壳 = **全局导航宿主**：整个 App 只有**一条**导航栈
+ * （一个 [rememberSaltNavigator] + 一个 [NavDisplay]，见本函数内「全局导航」注释）。
  *
  * 按要求不使用 Pager（不做左右滑动翻页），页面完全由底部导航的选择决定：
- * - 0：日程（[AgendaPage]）
- * - 1：课表（[TimetablePage]）
- * - 2：设置（[SettingsPage]：导入课程、颜色模式、辅助线、课表外观、教务系统插件）
+ * - 日程（[AgendaPage]，根键 [AgendaRootKey]）
+ * - 课表（[TimetablePage]，根键 [TimetableRootKey]）
+ * - 设置（[SettingsPage]：导入课程、颜色模式、辅助线、课表外观、教务系统插件，
+ *   根键 [SettingsRootKey]）
+ *
+ * 三个 tab 根是 `topLevelRoutes`：点底栏 = `navigate(根键)`，整条栈收敛回该 tab 根；
+ * 子页（课表设置、课表外观、上课时间、关于、开源许可…）压在栈根之上，
+ * 且底栏只属于 tab 根场景（[HomeTabScaffold]）——进子页后底栏消失、子页全屏。
  *
  * 这里统一持有**多课表档案**与应用设置，各页面共享同一份数据：
  * - 每套课表（[CourseSchedule]）持有自己的一组自定义课程与**专属设置**
@@ -122,7 +159,6 @@ import kotlin.time.ExperimentalTime
 @OptIn(UnstableSaltUiApi::class, ExperimentalTime::class)
 @Composable
 internal fun HomeScreen(onColorModeChange: (String) -> Unit = {}) {
-    var selectedPage by rememberSaveable { mutableStateOf(0) }
 
     // 多课表档案（custom-schedule.json）：全部课表 + 当前打开的课表
     var book by remember { mutableStateOf(CourseBook()) }
@@ -801,119 +837,272 @@ internal fun HomeScreen(onColorModeChange: (String) -> Unit = {}) {
         onConvertAllPluginCourses = requestConvertAllPluginCourses
     )
 
-    Column(modifier = Modifier.fillMaxSize()) {
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .weight(1f)
-        ) {
-            Crossfade(
-                targetState = selectedPage,
-                animationSpec = tween(durationMillis = 250),
-                label = "homePage"
-            ) { page ->
-                when (page) {
-                    0 -> AgendaPage(
-                        courses = customCourses,
-                        pluginCourses = pluginCourses,
-                        settings = scheduleSettings,
-                        onUpdateCourse = updateCourse,
-                        onDeleteCourse = deleteCourse,
-                        onConvertPluginCourse = requestConvertPluginCourse
+    /*
+     * ────────────────────────────────────────────────────────────────
+     * 全局导航：整个 App 只有**一条**导航栈（一个 SaltNavigator + 一个 NavDisplay）。
+     * ────────────────────────────────────────────────────────────────
+     * 栈根 = 三个 tab（[AgendaRootKey] / [TimetableRootKey] / [SettingsRootKey]），
+     * 三者是 `topLevelRoutes`：点底栏 `navigate(根键)` 会把整条栈收敛回该 tab 根，
+     * 所以在子页里切 tab 会顺带清掉子页栈；子页（课表设置、课表外观、关于…）压在栈根之上，
+     * 返回箭头 / 系统返回键 / 侧滑返回也都只动这一条栈。
+     *
+     * 底栏放在 tab 根场景里（见 [HomeTabScaffold]）：进入子页后根场景卸载、底栏随之消失，
+     * 子页即全屏；返回根场景底栏再出现，不需要额外的显示 / 隐藏判断。
+     */
+    val navigator = rememberSaltNavigator(
+        configuration = SavedStateConfiguration {
+            serializersModule = SerializersModule {
+                polymorphic(baseClass = NavKey::class) {
+                    // —— 三个 tab 根 ——
+                    subclass(serializer = AgendaRootKey.serializer())
+                    subclass(serializer = TimetableRootKey.serializer())
+                    subclass(serializer = SettingsRootKey.serializer())
+                    // —— 课表页子页 ——
+                    subclass(serializer = ScheduleSettingsKey.serializer())
+                    subclass(serializer = SchedulePluginKey.serializer())
+                    subclass(serializer = TimetableLessonTimesKey.serializer())
+                    subclass(serializer = TimetableLessonEditKey.serializer())
+                    // —— 设置页子页 ——
+                    subclass(serializer = AppearanceKey.serializer())
+                    subclass(serializer = GlobalScheduleSettingsKey.serializer())
+                    subclass(serializer = DefaultLessonTimesKey.serializer())
+                    subclass(serializer = DefaultTimetableEditKey.serializer())
+                    subclass(serializer = PluginsKey.serializer())
+                    subclass(serializer = AboutKey.serializer())
+                    subclass(serializer = OssLicenseListKey.serializer())
+                    subclass(serializer = OssLicenseDetailKey.serializer())
+                }
+            }
+        },
+        initRoute = AgendaRootKey,
+        topLevelRoutes = setOf(AgendaRootKey, TimetableRootKey, SettingsRootKey)
+    )
+
+    /** 底栏点按：切到某个 tab（topLevelRoutes 语义：清掉子页栈、把栈根换成它）。 */
+    val onTabSelected: (NavKey) -> Unit = { navigator.navigate(it) }
+
+    // 课表 tab 的周状态：必须住在导航宿主这一层——压栈后 tab 根 entry 会卸载，
+    // 留在 entry 里「正在浏览第几周」会被重置回当前周
+    val timetableWeekState = rememberTimetablePageState(
+        termStart = scheduleSettings.termStart,
+        semesterWeekCount = scheduleSettings.semesterWeekCount,
+        courses = displayCourses
+    )
+
+    Box(modifier = Modifier.fillMaxSize()) {
+        NavDisplay(
+            backStack = navigator.navBackStack,
+            modifier = Modifier.fillMaxSize(),
+            onBack = { navigator.back() },
+            // 前进转场分两种：
+            // - 目标是 tab 根（`previousEntries` 为空 = 栈深 1）→ **切 tab**，
+            //   沿用原来底栏切换的 250ms 淡出淡入（Crossfade 的观感）；
+            // - 目标是子页（压栈）→ 走 navigation3 的默认前进转场
+            transitionSpec = {
+                if (targetState.previousEntries.isEmpty()) {
+                    ContentTransform(
+                        fadeIn(animationSpec = tween(250)),
+                        fadeOut(animationSpec = tween(250))
                     )
-                    1 -> TimetablePage(
-                        courses = customCourses,
-                        pluginCourses = pluginCourses,
+                } else {
+                    defaultTransitionSpec<NavKey>().invoke(this)
+                }
+            },
+            // 关掉返回预测动画：滑动返回跟手时不再把当前页缩小到 0.7 倍做预览，
+            // 改为与普通返回（pop）一致的淡入淡出过渡
+            predictivePopTransitionSpec = { _ ->
+                ContentTransform(
+                    fadeIn(animationSpec = tween(700)),
+                    fadeOut(animationSpec = tween(700))
+                )
+            },
+            entryProvider = entryProvider {
+                /* ---------------- 三个 tab 根（带底栏的外壳） ---------------- */
+                entry<AgendaRootKey> {
+                    HomeTabScaffold(
+                        selectedTab = AgendaRootKey,
+                        onTabSelected = onTabSelected
+                    ) {
+                        AgendaPage(
+                            courses = customCourses,
+                            pluginCourses = pluginCourses,
+                            settings = scheduleSettings,
+                            onUpdateCourse = updateCourse,
+                            onDeleteCourse = deleteCourse,
+                            onConvertPluginCourse = requestConvertPluginCourse
+                        )
+                    }
+                }
+                entry<TimetableRootKey> {
+                    HomeTabScaffold(
+                        selectedTab = TimetableRootKey,
+                        onTabSelected = onTabSelected
+                    ) {
+                        TimetablePage(
+                            courses = customCourses,
+                            pluginCourses = pluginCourses,
+                            settings = scheduleSettings,
+                            schedules = book.schedules,
+                            activeScheduleId = book.activeScheduleId,
+                            // 周状态由导航宿主持有（压栈返回后浏览周不跳回当前周）
+                            weekState = timetableWeekState,
+                            onOpenScheduleSettings = { navigator.navigate(ScheduleSettingsKey) },
+                            onOpenLessonTimes = { navigator.navigate(TimetableLessonTimesKey) },
+                            // 子标题是否显示课表名称：全局显示开关（不用课表专属设置快照）
+                            showScheduleNameInSubtitle = settings.showScheduleNameInSubtitle,
+                            onScheduleSettingsChange = updateScheduleSettings,
+                            onSwitchSchedule = switchSchedule,
+                            onCreateSchedule = createSchedule,
+                            onRenameSchedule = renameSchedule,
+                            onDeleteSchedule = deleteSchedule,
+                            onExportSchedule = exportSchedule,
+                            buildExportJson = buildExportJson,
+                            onImportReady = onImportReady,
+                            onAddCourse = addCourse,
+                            onUpdateCourse = updateCourse,
+                            onDeleteCourse = deleteCourse,
+                            onConvertPluginCourse = requestConvertPluginCourse,
+                            pluginRefreshing = pluginRefreshing,
+                            onRefreshPluginCourses = refreshPluginCourses
+                        )
+                    }
+                }
+                entry<SettingsRootKey> {
+                    HomeTabScaffold(
+                        selectedTab = SettingsRootKey,
+                        onTabSelected = onTabSelected
+                    ) {
+                        SettingsPage(
+                            settings = settings,
+                            onSettingsChange = { settings = it },
+                            onImportReady = onImportReady,
+                            pluginUi = pluginUi,
+                            onNavigate = { navigator.navigate(it) }
+                        )
+                    }
+                }
+
+                /* ---------------- 课表页子页（全屏，压在栈根之上） ---------------- */
+                entry<ScheduleSettingsKey> {
+                    ScheduleSettingsPage(
                         settings = scheduleSettings,
-                        schedules = book.schedules,
-                        activeScheduleId = book.activeScheduleId,
-                        // 子标题是否显示课表名称：全局显示开关（不用课表专属设置快照）
-                        showScheduleNameInSubtitle = settings.showScheduleNameInSubtitle,
-                        // 「全局时间表」：内置「默认作息」+ 全局课表设置里的默认时间表（只当来源）
-                        globalTimetables = settings.defaults.normalized().timetables,
-                        onScheduleSettingsChange = updateScheduleSettings,
-                        onSwitchSchedule = switchSchedule,
-                        onCreateSchedule = createSchedule,
-                        onRenameSchedule = renameSchedule,
-                        onDeleteSchedule = deleteSchedule,
-                        onExportSchedule = exportSchedule,
-                        buildExportJson = buildExportJson,
-                        onImportReady = onImportReady,
-                        onAddCourse = addCourse,
-                        onUpdateCourse = updateCourse,
-                        onDeleteCourse = deleteCourse,
-                        onConvertPluginCourse = requestConvertPluginCourse,
+                        onSettingsChange = updateScheduleSettings,
+                        scheduleName = activeSchedule?.name.orEmpty(),
+                        onRenameSchedule = { name ->
+                            renameSchedule(book.activeScheduleId, name)
+                        },
+                        onOpenLessonTimes = { navigator.navigate(TimetableLessonTimesKey) },
                         pluginUi = pluginUi,
-                        pluginRefreshing = pluginRefreshing,
-                        onRefreshPluginCourses = refreshPluginCourses
+                        onOpenPlugin = { navigator.navigate(SchedulePluginKey) },
+                        onBack = { navigator.back() }
                     )
-                    else -> SettingsPage(
+                }
+                entry<SchedulePluginKey> {
+                    SchedulePluginPage(
+                        pluginUi = pluginUi,
+                        scheduleName = activeSchedule?.name.orEmpty(),
+                        onBack = { navigator.back() }
+                    )
+                }
+                entry<TimetableLessonTimesKey> {
+                    LessonTimesPage(
+                        settings = scheduleSettings,
+                        onSettingsChange = updateScheduleSettings,
+                        onBack = { navigator.back() },
+                        onOpenTimetable = { navigator.navigate(TimetableLessonEditKey(it)) },
+                        // 全局时间表（内置「默认作息」+ 设置 → 全局课表设置里的默认时间表）：只当来源
+                        globalTimetables = settings.defaults.normalized().timetables,
+                        // 插件推荐时间表（读自插件包内的 timetables.json）
+                        pluginSection = pluginUi.timetableSection,
+                        onOpenPluginSettings = { navigator.navigate(SchedulePluginKey) }
+                    )
+                }
+                entry<TimetableLessonEditKey> { key ->
+                    TimetableEditPage(
+                        timetableId = key.timetableId,
+                        settings = scheduleSettings,
+                        onSettingsChange = updateScheduleSettings,
+                        onBack = { navigator.back() }
+                    )
+                }
+
+                /* ---------------- 设置页子页（全屏，压在栈根之上） ---------------- */
+                entry<AppearanceKey> {
+                    AppearanceSettingsPage(
                         settings = settings,
                         courses = displayCourses,
                         onSettingsChange = { settings = it },
-                        onImportReady = onImportReady,
-                        pluginUi = pluginUi
+                        onBack = { navigator.back() }
+                    )
+                }
+                // —— 全局课表设置：新建课表的默认值（不影响已建立的课表） ——
+                entry<GlobalScheduleSettingsKey> {
+                    GlobalScheduleSettingsPage(
+                        settings = settings,
+                        onSettingsChange = { settings = it },
+                        onOpenLessonTimes = { navigator.navigate(DefaultLessonTimesKey) },
+                        onBack = { navigator.back() }
+                    )
+                }
+                entry<DefaultLessonTimesKey> {
+                    // 用 ScheduleDefaults 的「可编辑视图」复用同一套时间表页面，
+                    // 改完再取回课表专属字段写进全局默认值
+                    LessonTimesPage(
+                        settings = settings.defaults.asEditableSettings(),
+                        onSettingsChange = { updated ->
+                            settings = settings.copy(defaults = ScheduleDefaults.from(updated))
+                        },
+                        onBack = { navigator.back() },
+                        onOpenTimetable = { navigator.navigate(DefaultTimetableEditKey(it)) },
+                        scope = TimetableScope.Defaults
+                    )
+                }
+                entry<DefaultTimetableEditKey> { key ->
+                    TimetableEditPage(
+                        timetableId = key.timetableId,
+                        settings = settings.defaults.asEditableSettings(),
+                        onSettingsChange = { updated ->
+                            settings = settings.copy(defaults = ScheduleDefaults.from(updated))
+                        },
+                        onBack = { navigator.back() },
+                        // 全局时间表最少保留一张
+                        canDelete = settings.defaults.normalized().timetables.size > 1
+                    )
+                }
+                entry<PluginsKey> {
+                    PluginsPage(
+                        pluginUi = pluginUi,
+                        onBack = { navigator.back() }
+                    )
+                }
+                entry<AboutKey> {
+                    AboutPage(
+                        onBack = { navigator.back() },
+                        onOpenLicenses = { navigator.navigate(OssLicenseListKey) }
+                    )
+                }
+                entry<OssLicenseListKey> {
+                    OssLicenseListPage(
+                        onBack = { navigator.back() },
+                        onOpen = { navigator.navigate(OssLicenseDetailKey(it)) }
+                    )
+                }
+                entry<OssLicenseDetailKey> { key ->
+                    OssLicenseDetailPage(
+                        license = key.license,
+                        onBack = { navigator.back() }
                     )
                 }
             }
-
-            // 顶部 Toast 层（dhyantoast）：覆盖在页面之上、屏幕最上边，
-            // 用于下拉刷新同步插件课表等结果提示（自动消失，可上滑关闭）
-            ToastHost(
-                hostState = toastHostState,
-                alignment = ToastAlignment.Top,
-                modifier = Modifier.fillMaxSize()
-            )
-        }
-
-        // 顶部分隔线
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(1.dp)
-                .background(SaltTheme.colors.stroke)
         )
 
-        // 底部导航栏：bar 背景要一直铺到屏幕底边（把底部系统导航条安全区也盖住）。
-        // Salt 的 BottomBar 内部是 `传入的 modifier → fillMaxWidth → height(56dp) → background`，
-        // background 画在最内层，所以安全区 padding 必须夹在「这层 background」的**外层**，
-        // 否则 navigationBarsPadding 下面那一段会露出页面背景色，
-        // 看起来就是「导航栏下面多出一截」。
-        //
-        // 底色取值（外层 background 与 Bar 自己的 background 必须用同一个不透明色）：
-        // - iOS 的 subBackground 是不透明色，叠多少层都是同一颜色，直接用它（维持原样）；
-        // - Android 的 subBackground 是半透明色（浅 0x80FFFFFF / 深 0x08FFFFFF），
-        //   在 56dp 栏内被叠两层、在下面的安全区只叠一层，会合成出两种不同的灰，
-        //   且都和状态栏（页面背景色）对不上 —— 安卓系统导航条那一行看起来就「没统一」。
-        //   因此 Android 上整块改用页面背景色，让
-        //   「状态栏一行 = 底栏一行 = 系统导航条一行」完全同色、无接缝。
-        val bottomBlockColor = SaltTheme.colors.subBackground
-            .takeIf { it.alpha >= 1f } ?: SaltTheme.colors.background
-        BottomBar(
-            modifier = Modifier
-                .background(bottomBlockColor)
-                .navigationBarsPadding(),
-            backgroundColor = bottomBlockColor
-        ) {
-            BottomBarItem(
-                state = selectedPage == 0,
-                onClick = { selectedPage = 0 },
-                painter = AgendaIcon,
-                text = "日程"
-            )
-            BottomBarItem(
-                state = selectedPage == 1,
-                onClick = { selectedPage = 1 },
-                painter = TimetableIcon,
-                text = "课表"
-            )
-            BottomBarItem(
-                state = selectedPage == 2,
-                onClick = { selectedPage = 2 },
-                painter = SettingsIcon,
-                text = "设置"
-            )
-        }
+        // 顶部 Toast 层（dhyantoast）：盖在所有场景（含子页）之上、屏幕最上边，
+        // 用于下拉刷新同步插件课表等结果提示（自动消失，可上滑关闭）
+        ToastHost(
+            hostState = toastHostState,
+            alignment = ToastAlignment.Top,
+            modifier = Modifier.fillMaxSize()
+        )
     }
 
     // 插件安装/卸载结果提示（可任意关闭）
@@ -994,6 +1183,83 @@ internal fun HomeScreen(onColorModeChange: (String) -> Unit = {}) {
             },
             onDismissRequest = { promptTermSetup = false }
         )
+    }
+}
+
+/**
+ * tab 根场景的外壳：内容区 + 顶部分隔线 + 底部 [BottomBar]。
+ *
+ * 只有三个 tab 根（[AgendaRootKey] / [TimetableRootKey] / [SettingsRootKey]）用它；
+ * 子页由全局导航全屏压在其上，因此**子页里看不到底栏**，返回根场景底栏自动回来。
+ *
+ * @param selectedTab 当前 tab 根（= 该 entry 的根键），决定底栏高亮
+ * @param onTabSelected 点底栏：把全局导航栈收敛到对应 tab 根
+ * @param content tab 内容（日程 / 课表 / 设置）
+ */
+@OptIn(UnstableSaltUiApi::class)
+@Composable
+private fun HomeTabScaffold(
+    selectedTab: NavKey,
+    onTabSelected: (NavKey) -> Unit,
+    content: @Composable () -> Unit
+) {
+    Column(modifier = Modifier.fillMaxSize()) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .weight(1f)
+        ) {
+            content()
+        }
+
+        // 顶部分隔线
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(1.dp)
+                .background(SaltTheme.colors.stroke)
+        )
+
+        // 底部导航栏：bar 背景要一直铺到屏幕底边（把底部系统导航条安全区也盖住）。
+        // Salt 的 BottomBar 内部是 `传入的 modifier → fillMaxWidth → height(56dp) → background`，
+        // background 画在最内层，所以安全区 padding 必须夹在「这层 background」的**外层**，
+        // 否则 navigationBarsPadding 下面那一段会露出页面背景色，
+        // 看起来就是「导航栏下面多出一截」。
+        //
+        // 底色取值（外层 background 与 Bar 自己的 background 必须用同一个不透明色）：
+        // - iOS 的 subBackground 是不透明色，叠多少层都是同一颜色，直接用它（维持原样）；
+        // - Android 的 subBackground 是半透明色（浅 0x80FFFFFF / 深 0x08FFFFFF），
+        //   在 56dp 栏内被叠两层、在下面的安全区只叠一层，会合成出两种不同的灰，
+        //   且都和状态栏（页面背景色）对不上 —— 安卓系统导航条那一行看起来就「没统一」。
+        //   因此 Android 上整块改用页面背景色，让
+        //   「状态栏一行 = 底栏一行 = 系统导航条一行」完全同色、无接缝。
+        val bottomBlockColor = SaltTheme.colors.subBackground
+            .takeIf { it.alpha >= 1f } ?: SaltTheme.colors.background
+        BottomBar(
+            modifier = Modifier
+                .background(bottomBlockColor)
+                .navigationBarsPadding(),
+            backgroundColor = bottomBlockColor
+        ) {
+            BottomBarItem(
+                state = selectedTab == AgendaRootKey,
+                onClick = { onTabSelected(AgendaRootKey) },
+                painter = AgendaIcon,
+                text = "日程"
+            )
+            BottomBarItem(
+                state = selectedTab == TimetableRootKey,
+                onClick = { onTabSelected(TimetableRootKey) },
+                painter = TimetableIcon,
+                text = "课表"
+            )
+            BottomBarItem(
+                state = selectedTab == SettingsRootKey,
+                onClick = { onTabSelected(SettingsRootKey) },
+                painter = SettingsIcon,
+                text = "设置"
+            )
+        }
     }
 }
 

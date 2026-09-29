@@ -1,9 +1,5 @@
 package com.pgigi.pumpkincampus.pages
 
-import androidx.compose.animation.ContentTransform
-import androidx.compose.animation.core.tween
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -34,10 +30,7 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.unit.DpOffset
 import androidx.compose.ui.unit.dp
-import androidx.navigation3.runtime.NavBackStack
 import androidx.navigation3.runtime.NavKey
-import androidx.navigation3.runtime.entryProvider
-import androidx.navigation3.ui.NavDisplay
 import com.moriafly.salt.ui.Icon
 import com.moriafly.salt.ui.SaltTheme
 import com.moriafly.salt.ui.Text
@@ -57,8 +50,6 @@ import com.pgigi.pumpkincampus.models.AppSettings
 import com.pgigi.pumpkincampus.models.Course
 import com.pgigi.pumpkincampus.models.CourseSchedule
 import com.pgigi.pumpkincampus.models.ImportedSchedule
-import com.pgigi.pumpkincampus.models.LessonTimetable
-import com.pgigi.pumpkincampus.plugin.PluginUiState
 import com.pgigi.pumpkincampus.schedule.AddCourseSheet
 import com.pgigi.pumpkincampus.schedule.EditCourseSheet
 import com.pgigi.pumpkincampus.schedule.ImportErrorDialog
@@ -73,7 +64,6 @@ import com.pgigi.pumpkincampus.schedule.dayIndexOf
 import com.pgigi.pumpkincampus.schedule.weekCalculatorOf
 import com.pgigi.pumpkincampus.settings.ImportCoursesDialog
 import com.pgigi.pumpkincampus.settings.LessonTimesPage
-import com.pgigi.pumpkincampus.settings.SchedulePluginPage
 import com.pgigi.pumpkincampus.settings.ScheduleSettingsPage
 import com.pgigi.pumpkincampus.settings.TimetableEditPage
 import com.pgigi.pumpkincampus.settings.parseImportedSchedule
@@ -86,11 +76,11 @@ import kotlinx.serialization.Serializable
 
 private val WeekDayLabels = listOf("日", "一", "二", "三", "四", "五", "六")
 
-/** 课表页根导航键。 */
+/** 课表页根导航键（**全局导航**的 tab 根之一，另两个是 [AgendaRootKey] / SettingsRootKey）。 */
 @Serializable
 internal data object TimetableRootKey : NavKey
 
-/** 「课表设置」子页导航键（仅对当前课表生效的设置）。 */
+/** 「课表设置」子页导航键（仅对当前课表生效的设置；压入 HomeScreen 的全局导航栈）。 */
 @Serializable
 internal data object ScheduleSettingsKey : NavKey
 
@@ -98,16 +88,65 @@ internal data object ScheduleSettingsKey : NavKey
 @Serializable
 internal data object SchedulePluginKey : NavKey
 
-/** 课表页「上课时间」子页导航键。 */
+/** 课表页「上课时间」子页导航键（压入 HomeScreen 的全局导航栈）。 */
 @Serializable
 internal data object TimetableLessonTimesKey : NavKey
 
-/** 课表页「时间表编辑」子页导航键。 */
+/** 课表页「时间表编辑」子页导航键（压入 HomeScreen 的全局导航栈）。 */
 @Serializable
 internal data class TimetableLessonEditKey(val timetableId: String) : NavKey
 
 /**
- * 课表页（navigation3 宿主）：
+ * 课表 tab 的**周状态**：浏览到第几周、周计算器、每周课程分组。
+ *
+ * 由外壳 [HomeScreen] 在**全局导航宿主层**创建并持有（见 [rememberTimetablePageState]），
+ * 这样压栈进子页（课表设置 / 上课时间）再返回时，课表还停在原来浏览的那一周。
+ */
+internal class TimetablePageState(
+    val weekCalculator: WeekCalculator,
+    val courseListByWeek: List<List<Course>>,
+    val currentWeekPage: Int,
+    val pagerState: PagerState
+)
+
+/**
+ * 创建 [TimetablePageState]：课表页的周计算与翻页状态。
+ *
+ * 只跟「第一周的第一天」「学期周数」「课程」三个输入绑定，切 tab / 压栈弹栈都不重建，
+ * 因此必须在导航宿主（[HomeScreen]）里调用，而不是在 [TimetablePage] 内部——
+ * 全局导航的场景在压栈后会卸载重挂，entry 内的 remember 会丢状态。
+ *
+ * @param termStart 「第一周的第一天」（settings.termStart，可为空 = 用默认开课日）
+ * @param semesterWeekCount 学期周数
+ * @param courses 展示用课程（自定义 + 插件）
+ */
+@Composable
+internal fun rememberTimetablePageState(
+    termStart: String?,
+    semesterWeekCount: Int,
+    courses: List<Course>
+): TimetablePageState {
+    val weekCalculator = remember(termStart) { weekCalculatorOf(termStart) }
+    val courseListByWeek = remember(courses, weekCalculator, semesterWeekCount) {
+        buildCourseListByWeek(courses, semesterWeekCount, weekCalculator)
+    }
+    val currentWeekPage = remember(weekCalculator, semesterWeekCount) {
+        weekCalculator.getWeekNumber(currentLocalDate())
+            .coerceIn(1, semesterWeekCount) - 1
+    }
+    val pagerState = rememberPagerState(initialPage = currentWeekPage) {
+        courseListByWeek.size
+    }
+    return TimetablePageState(
+        weekCalculator = weekCalculator,
+        courseListByWeek = courseListByWeek,
+        currentWeekPage = currentWeekPage,
+        pagerState = pagerState
+    )
+}
+
+/**
+ * 课表页（**全局导航**中 `TimetableRootKey` 这个 tab 根的场景内容）：
  * - 左右顶住屏幕边缘（不用卡片包裹）
  * - 页面不滚动：TopBar 固定，日期行固定在 TopBar 下方并保持不动，
  *   只有表格体在内部上下滚动（滚动时行从日期行下面经过）
@@ -126,10 +165,17 @@ internal data class TimetableLessonEditKey(val timetableId: String) : NavKey
  * - 「⋯」按钮（MaterialIcons.MoreHorizontal）弹出 [TimetableMenuSheet]：
  *   快速跳转周数滑块 + 多课表管理（Chip 切换 / 新建 / 重命名 / 删除 / 课表设置）
  *   + 快捷按钮（第一周的第一天、上课时间）
- * - 子页统一由 navigation3 [NavDisplay] 推送：[ScheduleSettingsPage]（课表设置，
- *   仅对当前课表生效）、[LessonTimesPage]、[TimetableEditPage]
+ * - **子页不再由本页压栈**：[ScheduleSettingsPage]（课表设置）、[LessonTimesPage]、
+ *   [TimetableEditPage] 等子页统一压进 [HomeScreen] 里的**唯一全局导航栈**，
+ *   本页只回调 [onOpenScheduleSettings] / [onOpenLessonTimes]；
+ *   返回箭头 / 系统返回键 / 侧滑返回同样只作用于那条全局栈
  * - 课程详情底部有「编辑课程」入口：[EditCourseSheet] 修改或（二次确认后）删除
  *
+ * @param weekState 周状态（周计算器、每周课程分组、当前周、[PagerState]）。
+ *   必须由外壳 [HomeScreen] 用 [rememberTimetablePageState] 在**导航宿主层**持有：
+ *   全局导航压栈时本 entry 会卸载，放在 entry 里「正在浏览第几周」会被重置回当前周
+ * @param onOpenScheduleSettings 打开「课表设置」子页（压入全局导航栈）
+ * @param onOpenLessonTimes 打开「上课时间」子页（压入全局导航栈）
  * @param courses 当前课表的**自定义课程**（由 [HomeScreen] 统一持有；可编辑）
  * @param pluginCourses 当前课表的**插件课程**（只读层，来自教务系统插件同步）：
  *   与自定义课程一起展示（外观一致），详情只读、需「转换为自定义课程」
@@ -153,7 +199,6 @@ internal data class TimetableLessonEditKey(val timetableId: String) : NavKey
  * @param onDeleteCourse 删除课程回调（已二次确认）
  * @param onConvertPluginCourse 插件课程「转换为自定义课程」回调（由 HomeScreen 弹确认，
  *   提示插件更新课表后可能出现的重复课程）
- * @param pluginUi 插件状态与回调（课表设置 → 教务系统插件子页使用；null = 未接入）
  * @param showScheduleNameInSubtitle 课表页子标题是否追加当前课表名称
  *   （**全局显示开关**：由 HomeScreen 传全局设置，不用课表专属设置的快照值）
  * @param pluginRefreshing 是否正在同步插件课表（下拉刷新的转圈状态）
@@ -168,6 +213,10 @@ internal fun TimetablePage(
     settings: AppSettings = AppSettings(),
     schedules: List<CourseSchedule> = emptyList(),
     activeScheduleId: String = "",
+    // 周状态 + 子页回调由导航宿主（HomeScreen）注入，见 TimetablePageState
+    weekState: TimetablePageState,
+    onOpenScheduleSettings: () -> Unit = {},
+    onOpenLessonTimes: () -> Unit = {},
     onScheduleSettingsChange: (AppSettings) -> Unit = {},
     onSwitchSchedule: (String) -> Unit = {},
     onCreateSchedule: (String) -> Unit = {},
@@ -180,22 +229,10 @@ internal fun TimetablePage(
     onUpdateCourse: (Course, Course) -> Unit = { _, _ -> },
     onDeleteCourse: (Course) -> Unit = {},
     onConvertPluginCourse: (Course) -> Unit = {},
-    pluginUi: PluginUiState? = null,
     showScheduleNameInSubtitle: Boolean = true,
-    globalTimetables: List<LessonTimetable> = emptyList(),
     pluginRefreshing: Boolean = false,
     onRefreshPluginCourses: () -> Unit = {}
 ) {
-    val backStack = remember { NavBackStack<NavKey>(TimetableRootKey) }
-
-    fun push(key: NavKey) {
-        if (backStack.lastOrNull() != key) backStack.add(key)
-    }
-
-    fun pop() {
-        if (backStack.size > 1) backStack.removeAt(backStack.lastIndex)
-    }
-
     // 展示层 = 自定义课程 + 插件课程；但**只读判定**只认「插件里有、自定义里没有」的课程：
     // 用户把插件课程转成自定义课程后两边内容一致，此时按自定义课程处理，
     // 这样转换后的副本还能继续编辑（否则会被只读层挡住编辑入口）
@@ -208,107 +245,34 @@ internal fun TimetablePage(
         predicate
     }
 
-    // 周状态提到导航宿主层：压栈 / 弹栈（root 场景卸载重挂）期间保持浏览周不变
-    val weekCalculator = remember(settings.termStart) { weekCalculatorOf(settings.termStart) }
-    val courseListByWeek = remember(allCourses, weekCalculator, settings.semesterWeekCount) {
-        buildCourseListByWeek(allCourses, settings.semesterWeekCount, weekCalculator)
-    }
-    val currentWeekPage = remember(weekCalculator, settings.semesterWeekCount) {
-        weekCalculator.getWeekNumber(currentLocalDate())
-            .coerceIn(1, settings.semesterWeekCount) - 1
-    }
-    val pagerState = rememberPagerState(initialPage = currentWeekPage) {
-        courseListByWeek.size
-    }
-
-    NavDisplay(
-        backStack = backStack,
-        modifier = Modifier.fillMaxSize(),
-        onBack = { pop() },
-        // 关掉返回预测动画：滑动返回跟手时不再把当前页缩小到 0.7 倍做预览，
-        // 改为与普通返回（pop）一致的淡入淡出过渡
-        predictivePopTransitionSpec = { _ ->
-            ContentTransform(
-                fadeIn(animationSpec = tween(700)),
-                fadeOut(animationSpec = tween(700))
-            )
-        },
-        entryProvider = entryProvider {
-            entry<TimetableRootKey> {
-                TimetableRootContent(
-                    courses = allCourses,
-                    isPluginCourse = isPluginCourse,
-                    settings = settings,
-                    schedules = schedules,
-                    activeScheduleId = activeScheduleId,
-                    weekCalculator = weekCalculator,
-                    courseListByWeek = courseListByWeek,
-                    currentWeekPage = currentWeekPage,
-                    pagerState = pagerState,
-                    onScheduleSettingsChange = onScheduleSettingsChange,
-                    onOpenScheduleSettings = { push(ScheduleSettingsKey) },
-                    onOpenLessonTimes = { push(TimetableLessonTimesKey) },
-                    onSwitchSchedule = onSwitchSchedule,
-                    onCreateSchedule = onCreateSchedule,
-                    onRenameSchedule = onRenameSchedule,
-                    onDeleteSchedule = onDeleteSchedule,
-                    onExportSchedule = onExportSchedule,
-                    buildExportJson = buildExportJson,
-                    onImportReady = onImportReady,
-                    onAddCourse = onAddCourse,
-                    onUpdateCourse = onUpdateCourse,
-                    onDeleteCourse = onDeleteCourse,
-                    onConvertPluginCourse = onConvertPluginCourse,
-                    showScheduleNameInSubtitle = showScheduleNameInSubtitle,
-                    pluginRefreshing = pluginRefreshing,
-                    onRefreshPluginCourses = onRefreshPluginCourses
-                )
-            }
-            entry<ScheduleSettingsKey> {
-                ScheduleSettingsPage(
-                    settings = settings,
-                    onSettingsChange = onScheduleSettingsChange,
-                    scheduleName = schedules.firstOrNull { it.id == activeScheduleId }
-                        ?.name.orEmpty(),
-                    onRenameSchedule = { name ->
-                        onRenameSchedule(activeScheduleId, name)
-                    },
-                    onOpenLessonTimes = { push(TimetableLessonTimesKey) },
-                    pluginUi = pluginUi,
-                    onOpenPlugin = { push(SchedulePluginKey) },
-                    onBack = { pop() }
-                )
-            }
-            entry<SchedulePluginKey> {
-                SchedulePluginPage(
-                    pluginUi = pluginUi,
-                    scheduleName = schedules.firstOrNull { it.id == activeScheduleId }
-                        ?.name.orEmpty(),
-                    onBack = { pop() }
-                )
-            }
-            entry<TimetableLessonTimesKey> {
-                LessonTimesPage(
-                    settings = settings,
-                    onSettingsChange = onScheduleSettingsChange,
-                    onBack = { pop() },
-                    onOpenTimetable = { push(TimetableLessonEditKey(it)) },
-                    // 全局时间表（内置「默认作息」+ 设置 → 全局课表设置里的默认时间表）：只当来源
-                    globalTimetables = globalTimetables,
-                    // 插件推荐时间表（读自插件包内的 timetables.json）
-                    pluginSection = pluginUi?.timetableSection,
-                    onOpenPluginSettings = { push(SchedulePluginKey) }
-                )
-            }
-            entry<TimetableLessonEditKey> { key ->
-                TimetableEditPage(
-                    timetableId = key.timetableId,
-                    settings = settings,
-                    onSettingsChange = onScheduleSettingsChange,
-                    onBack = { pop() }
-                )
-            }
-        }
+    TimetableRootContent(
+        courses = allCourses,
+        isPluginCourse = isPluginCourse,
+        settings = settings,
+        schedules = schedules,
+        activeScheduleId = activeScheduleId,
+        // 周状态由导航宿主持有：压栈进子页再返回时浏览周不跳回当前周
+        weekCalculator = weekState.weekCalculator,
+        courseListByWeek = weekState.courseListByWeek,
+        currentWeekPage = weekState.currentWeekPage,
+        pagerState = weekState.pagerState,
+        onScheduleSettingsChange = onScheduleSettingsChange,
+        onOpenScheduleSettings = onOpenScheduleSettings,
+        onOpenLessonTimes = onOpenLessonTimes,
+        onSwitchSchedule = onSwitchSchedule,
+        onCreateSchedule = onCreateSchedule,
+        onRenameSchedule = onRenameSchedule,
+        onDeleteSchedule = onDeleteSchedule,
+        onExportSchedule = onExportSchedule,
+        buildExportJson = buildExportJson,
+        onImportReady = onImportReady,
+        onAddCourse = onAddCourse,
+        onUpdateCourse = onUpdateCourse,
+        onDeleteCourse = onDeleteCourse,
+        onConvertPluginCourse = onConvertPluginCourse,
+        showScheduleNameInSubtitle = showScheduleNameInSubtitle,
+        pluginRefreshing = pluginRefreshing,
+        onRefreshPluginCourses = onRefreshPluginCourses
     )
 }
 
@@ -328,7 +292,7 @@ internal fun timetableSubtitle(
     weekInfo
 }
 
-/** 课表页根场景内容（[NavDisplay] 的 root entry；周状态由宿主提供以跨子页保持）。 */
+/** 课表页根场景内容（全局导航里 `TimetableRootKey` 的 entry；周状态由宿主提供以跨子页保持）。 */
 @OptIn(UnstableSaltUiApi::class, ExperimentalMaterial3Api::class)
 @Composable
 private fun TimetableRootContent(
