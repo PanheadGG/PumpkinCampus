@@ -874,7 +874,27 @@ internal fun HomeScreen(onColorModeChange: (String) -> Unit = {}) {
                 .background(SaltTheme.colors.stroke)
         )
 
-        BottomBar(modifier = Modifier.navigationBarsPadding()) {
+        // 底部导航栏：bar 背景要一直铺到屏幕底边（把底部系统导航条安全区也盖住）。
+        // Salt 的 BottomBar 内部是 `传入的 modifier → fillMaxWidth → height(56dp) → background`，
+        // background 画在最内层，所以安全区 padding 必须夹在「这层 background」的**外层**，
+        // 否则 navigationBarsPadding 下面那一段会露出页面背景色，
+        // 看起来就是「导航栏下面多出一截」。
+        //
+        // 底色取值（外层 background 与 Bar 自己的 background 必须用同一个不透明色）：
+        // - iOS 的 subBackground 是不透明色，叠多少层都是同一颜色，直接用它（维持原样）；
+        // - Android 的 subBackground 是半透明色（浅 0x80FFFFFF / 深 0x08FFFFFF），
+        //   在 56dp 栏内被叠两层、在下面的安全区只叠一层，会合成出两种不同的灰，
+        //   且都和状态栏（页面背景色）对不上 —— 安卓系统导航条那一行看起来就「没统一」。
+        //   因此 Android 上整块改用页面背景色，让
+        //   「状态栏一行 = 底栏一行 = 系统导航条一行」完全同色、无接缝。
+        val bottomBlockColor = SaltTheme.colors.subBackground
+            .takeIf { it.alpha >= 1f } ?: SaltTheme.colors.background
+        BottomBar(
+            modifier = Modifier
+                .background(bottomBlockColor)
+                .navigationBarsPadding(),
+            backgroundColor = bottomBlockColor
+        ) {
             BottomBarItem(
                 state = selectedPage == 0,
                 onClick = { selectedPage = 0 },
