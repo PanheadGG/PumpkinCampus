@@ -151,6 +151,9 @@ data class ScheduleDefaults(
  * - **课表专属项**：第一周第一天、上课时间（时间表）、一天课程节数、学期周数、
  *   显示替换——按课表保存（[com.pgigi.pumpkincampus.models.CourseSchedule.settings]），
  *   随导出信封一起分享。
+ * - **自定义背景**：[background]（全局作用域 / 单课表作用域）、[pageBackgrounds]（按页面覆盖）。
+ *   [pageBackgrounds] 是全局项；[background] 在课表设置快照里代表**单课表**背景，
+ *   导出时单独剥掉（图片是本机文件，发给别人也读不到）。
  */
 @Serializable
 data class AppSettings(
@@ -191,7 +194,26 @@ data class AppSettings(
      * **全局**：只作为新建课表时的初值，改它不影响已建立的课表；
      * 导出/分享时被剥离（[forScheduleExport]），导入方不会拿到别人的默认值。
      */
-    val defaults: ScheduleDefaults = ScheduleDefaults()
+    val defaults: ScheduleDefaults = ScheduleDefaults(),
+    /**
+     * 自定义背景（**全局**作用域）：整个 App 的兜底背景。
+     *
+     * null = 不自定义，跟随应用主题背景。与颜色模式一样只读 `settings.json` 的值，
+     * 导出/分享时**不进信封**（见 [forScheduleExport]）。在「设置 → 课表外观」里调整。
+     */
+    val background: BackgroundConfig? = null,
+    /**
+     * 自定义背景的**按页面**覆盖：key = 页面分组（[BackgroundConfig.GROUP_*]）。**全局**。
+     *
+     * 优先级最高：按页面 > 单课表（仅课表相关页） > 全局 > 跟随系统；
+     * 与 [background] 一样不随课表快照变化、不进导出信封。
+     */
+    val pageBackgrounds: Map<String, BackgroundConfig> = emptyMap(),
+    /**
+     * 自定义背景时，卡片 / 输入框 / 底栏这类 **chrome 底色**的不透明度（0.25f..1f，见设置里的滑块）。
+     * **全局**显示项：跟随系统时一律不透明（本字段不生效），所以只在铺了自定义背景的场景起作用。
+     */
+    val chromeOpacity: Float = 0.6f
 ) {
 
     /** 当前启用的时间表；未启用任何时间表返回 null（用内置默认作息）。 */
@@ -219,6 +241,9 @@ data class AppSettings(
      * （颜色模式、子标题课表名、辅助线、课表外观参数）一律以 [global] 为准。
      *
      * 展示课表时统一走这一步——多课表共用同一套外观，切课表不会跳变。
+     *
+     * 自定义背景里，**按页面覆盖**是全局项一并套用；**[background] 不在其中**——
+     * 它在课表专属设置里代表「单课表」作用域，必须原样保留，否则切课表就换不掉背景。
      */
     fun withGlobalDisplay(global: AppSettings): AppSettings = copy(
         colorMode = global.colorMode,
@@ -227,7 +252,9 @@ data class AppSettings(
         cellHeightDp = global.cellHeightDp,
         showTeacher = global.showTeacher,
         showClassroom = global.showClassroom,
-        classroomAtPrefix = global.classroomAtPrefix
+        classroomAtPrefix = global.classroomAtPrefix,
+        pageBackgrounds = global.pageBackgrounds,
+        chromeOpacity = global.chromeOpacity
     )
 
     /**

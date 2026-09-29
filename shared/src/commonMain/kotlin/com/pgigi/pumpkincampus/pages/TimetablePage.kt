@@ -561,7 +561,7 @@ private fun TimetableRootContent(
                                 scaleY = scale
                             }
                             .shadow(2.dp, CircleShape)
-                            .background(SaltTheme.colors.popup, CircleShape),
+                            .background(sceneCardColor(), CircleShape),
                         contentAlignment = Alignment.Center
                     ) {
                         if (pluginRefreshing) {

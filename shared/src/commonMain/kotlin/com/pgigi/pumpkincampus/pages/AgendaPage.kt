@@ -347,7 +347,8 @@ private fun AgendaCourseCard(
             .fillMaxWidth()
             .height(IntrinsicSize.Min)
             .clip(RoundedCornerShape(12.dp))
-            .background(SaltTheme.colors.popup)
+            // 自定义背景下换半透明纱，背景透出来；跟随系统时仍是原来的不透明 popup
+            .background(sceneCardColor())
             .clickable(onClick = onClick)
             .padding(12.dp),
         verticalAlignment = Alignment.CenterVertically

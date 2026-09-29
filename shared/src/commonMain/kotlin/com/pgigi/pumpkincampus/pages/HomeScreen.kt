@@ -18,6 +18,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
@@ -335,7 +336,8 @@ internal fun HomeScreen(onColorModeChange: (String) -> Unit = {}) {
                     name = active.name,
                     // 导出 = 用户看到的课表：自定义课程 + 插件课程（去重后一并作为普通课程）
                     courses = (active.courses + pluginCourses).distinct(),
-                    settings = scheduleSettings.forScheduleExport()
+                    // 自定义背景不进信封：图片是本机文件，接收方读不到，只会凭空多层底色
+                    settings = scheduleSettings.forScheduleExport().copy(background = null)
                 ),
                 ScheduleExport.serializer()
             )
@@ -891,15 +893,27 @@ internal fun HomeScreen(onColorModeChange: (String) -> Unit = {}) {
         courses = displayCourses
     )
 
+    /**
+     * 自定义背景（「设置 → 课表外观」）：三层覆盖从高到低
+     * **按页面 > 单课表（仅课表相关页） > 全局**，都没有则跟随系统。
+     * 图片在这一层解码一次，14 个场景共用同一份位图。
+     */
+    val sceneBackgrounds = rememberSceneBackgroundResolver(
+        global = settings.background,
+        schedule = book.activeSchedule()?.settings?.background,
+        pages = settings.pageBackgrounds,
+        chromeOpacity = settings.chromeOpacity
+    )
+
     Box(modifier = Modifier.fillMaxSize()) {
         NavDisplay(
             backStack = navigator.navBackStack,
             modifier = Modifier.fillMaxSize(),
             onBack = { navigator.back() },
-            // 保存态（默认项）+ 每个场景一层不透明页面背景，见 rememberSceneBackgroundDecorator
+            // 保存态（默认项）+ 每个场景一层不透明背景（自定义背景的落点）
             entryDecorators = listOf(
                 rememberSaveableStateHolderNavEntryDecorator(),
-                rememberSceneBackgroundDecorator()
+                rememberSceneBackgroundDecorator(sceneBackgrounds)
             ),
             // 前进转场分两种：
             // - 目标是 tab 根（`previousEntries` 为空 = 栈深 1）→ **切 tab**，
@@ -1039,6 +1053,14 @@ internal fun HomeScreen(onColorModeChange: (String) -> Unit = {}) {
                         settings = settings,
                         courses = displayCourses,
                         onSettingsChange = { settings = it },
+                        // 「单课表」作用域：读当前课表自己的背景，写回课表专属设置
+                        scheduleName = activeSchedule?.name.orEmpty(),
+                        scheduleBackground = activeSchedule?.settings?.background,
+                        onScheduleBackgroundChange = { background ->
+                            updateScheduleSettings(
+                                scheduleSettings.copy(background = background)
+                            )
+                        },
                         onBack = { navigator.back() }
                     )
                 }
@@ -1194,28 +1216,32 @@ internal fun HomeScreen(onColorModeChange: (String) -> Unit = {}) {
 }
 
 /**
- * 给**每个场景**（每个 NavEntry 的内容）铺一层不透明的页面背景色。
+ * 给**每个场景**（每个 NavEntry 的内容）铺一层不透明背景 + 页面内容。
  *
- * 页面本身（Salt 的 [com.moriafly.salt.ui.screen.BasicScreen]）是**透明的**，只负责排版、
- * 不画底色，过去靠最外层 App 根容器垫底色。进入导航栈动画后这就不够了：
- * iOS 默认前进转场会把旧场景向左滑出 1/4 屏并 veilOut 蒙灰，新场景又透明 ——
- * 于是「旧场景已经让开、新场景没画底色」的那块就露出最底层的 App 底色，
- * 表现成右侧一条硬边白块、旧页面内容还透在新页面里（切换时背景异常）。
+ * 背景层 [SceneBackgroundContent] 干两件事：
  *
- * 铺上这层背景后：新场景滑到哪，页面背景就铺到哪，旧场景被新场景完全盖住，
- * 与原生 iOS 推入的观感一致；静止时该颜色与 App 根容器底色相同，看不出任何变化。
+ * 1. **不露底**：页面本身（Salt 的 BasicScreen）是透明的，过去靠最外层 App 根容器垫底色；
+ *    进导航动画后就不够了——iOS 默认前进转场把旧场景向左滑出 1/4 屏并 veilOut 蒙灰，
+ *    新场景没画底色的区域会直接露出最底层底色，表现成右侧一条硬边白块
+ *    （切换时背景异常）。铺上之后新场景滑到哪背景就铺到哪，与原生 iOS 推入一致；
+ *    静止时颜色与 App 根容器相同，看不出任何变化。
+ * 2. **自定义背景**：铺的内容是三层覆盖（按页面 > 单课表 > 全局）解析出的配置，
+ *    配置与图片由 [rememberSceneBackgroundResolver] 在导航宿主处一次解好。
  *
  * 用 [NavEntryDecorator] 实现：它正好是 navigation3 提供的「给 entry 内容包一层」的钩子，
- * 一处覆盖全部 14 个路由，新增路由也自动带上。
+ * 一处覆盖全部路由，新增路由也自动带上。
  */
 @Composable
-private fun rememberSceneBackgroundDecorator(): NavEntryDecorator<NavKey> =
-    remember {
+private fun rememberSceneBackgroundDecorator(
+    resolver: SceneBackgroundResolver
+): NavEntryDecorator<NavKey> =
+    remember(resolver) {
         NavEntryDecorator<NavKey> { entry ->
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(SaltTheme.colors.background)
+            val config = resolver.resolve(entry.contentKey)
+            SceneBackgroundContent(
+                config = config,
+                image = resolver.imageOf(config),
+                chromeOpacity = resolver.chromeOpacity
             ) {
                 entry.Content()
             }
@@ -1269,13 +1295,23 @@ private fun HomeTabScaffold(
         //   且都和状态栏（页面背景色）对不上 —— 安卓系统导航条那一行看起来就「没统一」。
         //   因此 Android 上整块改用页面背景色，让
         //   「状态栏一行 = 底栏一行 = 系统导航条一行」完全同色、无接缝。
-        val bottomBlockColor = SaltTheme.colors.subBackground
-            .takeIf { it.alpha >= 1f } ?: SaltTheme.colors.background
+        //
+        // 铺了自定义背景时直接用这层半透明纱（自定义背景场景里 subBackground 已被换成纱色），
+        // 让底栏透出背景；此时内层必须给 Color.Transparent——否则 56dp 栏内叠两层、
+        // 下面安全区只叠一层，半透明色会合成出两截深浅不同的灰（正是上面 Android 的老问题）。
+        val customBackdrop = LocalSceneBackdropCustom.current
+        val bottomBlockColor = when {
+            customBackdrop -> SaltTheme.colors.subBackground
+            else -> SaltTheme.colors.subBackground.takeIf { it.alpha >= 1f }
+                ?: SaltTheme.colors.background
+        }
+        val innerBlockColor =
+            if (bottomBlockColor.alpha < 1f) Color.Transparent else bottomBlockColor
         BottomBar(
             modifier = Modifier
                 .background(bottomBlockColor)
                 .navigationBarsPadding(),
-            backgroundColor = bottomBlockColor
+            backgroundColor = innerBlockColor
         ) {
             BottomBarItem(
                 state = selectedTab == AgendaRootKey,

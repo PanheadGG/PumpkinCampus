@@ -117,7 +117,7 @@ val ossLicenses: List<OssLicense> = listOf(
         author = "androidpoet",
         link = "https://github.com/androidpoet/Dhyantoast",
         licence = APACHE_LICENSE,
-        note = "下拉刷新等操作的顶部 Toast 提示",
+        note = "下拉刷新等操作的顶部 Toast 提示（源码 vendored 于 shared 的 io/androidpoet/dhyantoast，见该目录 VENDORED.md）",
         file = APACHE_LICENSE_FILE,
         group = "界面"
     ),

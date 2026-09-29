@@ -40,6 +40,7 @@ import com.moriafly.salt.ui.screen.BasicScreen
 import com.moriafly.salt.ui.screen.TitleBarButton
 import com.pgigi.pumpkincampus.models.AppSettings
 import com.pgigi.pumpkincampus.models.DisplayReplace
+import com.pgigi.pumpkincampus.pages.sceneCardColor
 import com.pgigi.pumpkincampus.plugin.PluginUiState
 import com.pgigi.pumpkincampus.schedule.ScheduleNameDialog
 import com.pgigi.pumpkincampus.schedule.dayIndexOf
@@ -364,7 +365,7 @@ private fun RuleTextField(
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .background(SaltTheme.colors.popup, RoundedCornerShape(8.dp))
+                    .background(sceneCardColor(), RoundedCornerShape(8.dp))
                     .padding(horizontal = 8.dp, vertical = 8.dp)
             ) {
                 if (value.isEmpty()) {

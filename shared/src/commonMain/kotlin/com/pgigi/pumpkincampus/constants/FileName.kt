@@ -23,6 +23,13 @@ object FileName {
     const val PLUGIN_KV_DIR = "plugin-kv"
 
     /**
+     * 自定义背景图片目录（相对数据目录）：`background/<时间戳>.jpg`。
+     *
+     * 图片在导入时降采样压缩，配置里只存文件名（见 `BackgroundConfig.image`）。
+     */
+    const val BACKGROUND_DIR = "background"
+
+    /**
      * 桌面小组件数据（`widget_data.json`）：当前课表的课程 + 生效设置快照。
      *
      * Android 小组件按 `filesDir` 直读、iOS 小组件从 App Group 容器读取，两端都在

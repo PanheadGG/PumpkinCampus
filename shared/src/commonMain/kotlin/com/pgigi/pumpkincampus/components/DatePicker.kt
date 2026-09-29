@@ -29,6 +29,7 @@ import com.moriafly.salt.ui.SaltTheme
 import com.moriafly.salt.ui.Text
 import com.moriafly.salt.ui.icons.ChevronRight
 import com.moriafly.salt.ui.icons.SaltIcons
+import com.pgigi.pumpkincampus.pages.sceneCardColor
 import com.pgigi.pumpkincampus.schedule.currentLocalDate
 import com.pgigi.pumpkincampus.schedule.dayIndexOf
 import kotlinx.datetime.DateTimeUnit
@@ -197,7 +198,7 @@ fun AppDatePicker(
                             .background(
                                 when {
                                     isSelected -> SaltTheme.colors.highlight
-                                    else -> SaltTheme.colors.popup
+                                    else -> sceneCardColor()
                                 }
                             )
                             .clickable(enabled = enabled) {

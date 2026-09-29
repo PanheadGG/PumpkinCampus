@@ -333,8 +333,9 @@ fun ScheduleTable(
 /**
  * 日期行：左上角月份 + 每列星期与日期（今天高亮）。
  *
- * 固定在 [SchedulePager] 顶部（顶住 TopBar），自身带不透明背景与底部分隔线，
- * 滚动的表格体从它下面经过，从而产生「课表被日期行挡住」的效果。
+ * 固定在 [SchedulePager] 顶部（顶住 TopBar）。**自身透明**——它下面是 [SchedulePager] 的
+ * Column，日期行在上、表格体在下，两者不重叠，所以底色直接交给场景背景层：
+ * 铺了自定义背景（图片/纯色）时这一行就透出背景，跟随系统时背景层是页面底色，观感不变。
  */
 @Composable
 private fun ScheduleHeader(firstDay: LocalDate?, today: LocalDate) {
@@ -342,7 +343,6 @@ private fun ScheduleHeader(firstDay: LocalDate?, today: LocalDate) {
         modifier = Modifier
             .fillMaxWidth()
             .height(ScheduleHeaderHeight)
-            .background(SaltTheme.colors.background)
     ) {
         Column(
             modifier = Modifier
